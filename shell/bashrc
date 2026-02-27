@@ -1,24 +1,10 @@
-export TERM=xterm-256color
+# 设置 XDG 配置目录（如果未定义则使用默认值）
+: "${XDG_CONFIG_HOME:=$HOME/.config}"
+SHELL_CONFIG_DIR="$XDG_CONFIG_HOME/shell"
 
-# 载入.bash配置
-## 设置 nullglob 避免无文件时报错
-### 按分类 source 配置文件
+# 载入 shell 通用配置（env, alias, fun）
 shopt -s nullglob
-for f in ~/.bash/*.env; do source "$f"; done
-for f in ~/.bash/*.alias; do source "$f"; done
-for f in ~/.bash/*.fun; do source "$f"; done
+for f in "$SHELL_CONFIG_DIR"/*.env; do source "$f"; done
+for f in "$SHELL_CONFIG_DIR"/*.alias; do source "$f"; done
+for f in "$SHELL_CONFIG_DIR"/*.fun; do source "$f"; done
 shopt -u nullglob
-
-### 分级目录
-#shopt -s nullglob
-#for f in ~/.bash/env/*.env; do source "$f"; done   # 环境变量优先
-#for f in ~/.bash/alias/*.alias; do source "$f"; done
-#for f in ~/.bash/fun/*.fun; do source "$f"; done
-#shopt -u nullglob
-###
-
-
-
-shopt -u nullglob
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh

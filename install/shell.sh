@@ -11,52 +11,6 @@ ZSH_CONFIG_DIR="$XDG_CONFIG_HOME/zsh"
 
 mkdir -p "$SHELL_CONFIG_DIR"
 
-# safe_link 函数：安全创建符号链接
-safe_link() {
-    src="$1"
-    dest="$2"
-    name="$3"
-
-    # 源文件/目录必须存在
-    if [ ! -e "$src" ]; then
-        warn "源文件不存在: $src，跳过 $name 的链接"
-        return
-    fi
-
-    if [ -L "$dest" ]; then
-        # 目标已是符号链接，检查指向
-        current_target="$(readlink "$dest")"
-        if [ "$current_target" = "$src" ]; then
-            info "$name 已正确链接到 $src，跳过"
-        else
-            warn "$name 符号链接指向错误：$current_target"
-            ln -sf "$src" "$dest"
-            info "已更新符号链接 $dest -> $src"
-        fi
-    elif [ -e "$dest" ]; then
-        # 目标存在但不是符号链接
-        warn "$name 已存在且不是符号链接: $dest"
-        printf "是否覆盖？（备份原文件/目录并创建符号链接）[y/N] "
-        read reply
-        case "$reply" in
-            [yY]|[yY][eE][sS])
-                backup="${dest}.backup.$(date +%Y%m%d%H%M%S)"
-                mv "$dest" "$backup"
-                info "已备份原内容到 $backup"
-                ln -s "$src" "$dest"
-                info "已创建符号链接 $dest -> $src"
-                ;;
-            *)
-                info "跳过 $name 的配置"
-                ;;
-        esac
-    else
-        # 目标不存在
-        ln -s "$src" "$dest"
-        info "已创建符号链接 $dest -> $src"
-    fi
-}
-
 # 链接所有 .alias 文件
 for f in "$SCRIPT_DIR/shell/"*.alias; do
     if [ -f "$f" ]; then
@@ -64,6 +18,11 @@ for f in "$SCRIPT_DIR/shell/"*.alias; do
     fi
 done
 
+# 链接ssh环境配置
+safe_link "$SCRIPT_DIR/shell/ssh.env" "$SHELL_CONFIG_DIR/ssh.env" "SSH 环境变量"
+
+
+# 考虑将来用脚本代替
 # 链接所有 .env 文件
 for f in "$SCRIPT_DIR/shell/"*.env; do
     if [ -f "$f" ]; then
