@@ -27,5 +27,6 @@ fi
 if command -v nvim >/dev/null 2>&1; then
     NVIM_PLUGIN_CONFIG_DEST="${XDG_CONFIG_HOME:-$HOME/.config}/nvim/plugin-config"
     mkdir -p "$(dirname "$NVIM_PLUGIN_CONFIG_DEST")"
+    info "开始配置NVIM"
     safe_link "$VIM_PLUGIN_CONFIG_DEST" "$NVIM_PLUGIN_CONFIG_DEST" "Neovim 插件配置目录"
 fi
