@@ -1,0 +1,106 @@
+<?xml version='1.0'?>
+<!DOCTYPE fontconfig SYSTEM 'fonts.dtd'>
+<!-- f-->
+<fontconfig>
+    <!-- 第一步，设置默认的渲染参数 -->
+    <match target="font">
+        <!-- 修整像素大小(小于10px的调整到10px，否则四舍五入到整数) -->
+        <edit name="pixelsize">
+            <if>
+                <less>
+                    <name>pixelsize</name>
+                    <double>10</double>
+                </less>
+                <int>10</int>
+                <round>
+                    <name>pixelsize</name>
+                </round>
+            </if>
+        </edit>
+        <!-- 开启抗锯齿(smooth) -->
+        <edit name="antialias">
+            <bool>true</bool>
+        </edit>
+        <!-- 优先使用内嵌微调，同时默认开足微调 -->
+        <edit name="hinting">
+            <bool>true</bool>
+        </edit>
+        <edit name="autohint">
+            <bool>false</bool>
+        </edit>
+        <!-- 依个人喜好,你也可能喜欢默认"hintslight"(此时可将下面的"第七步"全部注释掉) -->
+        <edit name="hintstyle">
+            <const>hintfull</const>
+            <!-- <const>hintlight</const> -->
+        </edit>
+        <!-- LCD特征设置 -->
+        <edit name="rgba">
+            <const>rgb</const>
+        </edit>
+        <edit name="lcdfilter">
+            <const>lcddefault</const>
+        </edit>
+        <!-- 禁用内嵌点阵 -->
+        <edit name="embeddedbitmap">
+            <bool>false</bool>
+        </edit>
+        <!-- 禁用合成粗体 -->
+        <edit name="embolden">
+            <bool>false</bool>
+        </edit>
+    </match>
+
+    <!-- 设置字体别名 -->
+    <alias>
+        <family>serif</family>
+        <prefer>
+            <family>DejaVu Serif</family> <!-- 替换为 DejaVu Serif -->
+        </prefer>
+    </alias>
+
+    <alias>
+        <family>sans-serif</family>
+        <prefer>
+            <family>DejaVu Sans</family> <!-- 替换为 DejaVu Sans -->
+        </prefer>
+    </alias>
+
+    <alias>
+        <family>monospace</family>
+        <prefer>
+            <family>JetBrainsMono Nerd Font</family> <!-- 保持使用 JetBrainsMono Nerd Font -->
+            <family>Noto Sans Mono CJK SC</family> <!-- 保留中文字体 -->
+        </prefer>
+    </alias>
+
+    <!-- 替换 Counter-Strike 所需的字体 -->
+    <match target="pattern">
+        <test name="family" qual="any">
+            <string>Arial</string> <!-- 找到 Arial 字体 -->
+        </test>
+        <edit name="family" mode="replace" binding="strong">
+            <string>DejaVu Sans</string> <!-- 替换为 DejaVu Sans -->
+        </edit>
+    </match>
+
+    <match target="pattern">
+        <test name="family" qual="any">
+            <string>Times New Roman</string> <!-- 找到 Times New Roman 字体 -->
+        </test>
+        <edit name="family" mode="replace" binding="strong">
+            <string>DejaVu Serif</string> <!-- 替换为 DejaVu Serif -->
+        </edit>
+    </match>
+
+    <match target="pattern">
+        <test name="family" qual="any">
+            <string>Courier New</string> <!-- 找到 Courier New 字体 -->
+        </test>
+        <edit name="family" mode="replace" binding="strong">
+            <string>DejaVu Sans Mono</string> <!-- 替换为 DejaVu Sans Mono -->
+        </edit>
+    </match>
+
+    <!-- 你可以根据需要继续添加更多字体替换规则 -->
+</fontconfig>
+

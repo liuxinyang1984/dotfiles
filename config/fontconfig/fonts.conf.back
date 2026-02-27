@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- 提高中文字体的优先级 -->
+  <alias>
+    <family>serif</family>
+    <prefer>
+      <family>Noto Sans CJK SC</family> <!-- 首选简体中文字体 -->
+      <family>WenQuanYi Micro Hei</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>sans-serif</family>
+    <prefer>
+      <family>Noto serif CJK SC</family> <!-- 首选简体中文字体 -->
+      <family>WenQuanYi Zen Hei</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>monospace</family>
+    <prefer>
+      <family>Noto Sans Mono CJK SC</family> <!-- 首选简体中文字体 -->
+      <family>WenQuanYi Micro Hei Mono</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>CaskaydiaMono Nerd Font</family>
+    <prefer>
+      <family>Noto Sans Mono CJK SC</family> <!-- 首选简体中文字体 -->
+    </prefer>
+  </alias>
+  <alias>
+    <family>JetBrainsMono Nerd Font Mono</family>
+    <prefer>
+      <family>Noto Sans Mono CJK SC</family> <!-- 首选简体中文字体 -->
+    </prefer>
+  </alias>
+  <alias>
+    <family>JetBrainsMono Nerd Font</family>
+    <prefer>
+      <family>Noto Sans Mono CJK SC</family> <!-- 首选简体中文字体 -->
+    </prefer>
+  </alias>
+</fontconfig>
+
