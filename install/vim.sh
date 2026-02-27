@@ -5,7 +5,7 @@ info "定义vim源文件目录 $PLUGIN_CONFIG_SRC"
 
 # 目标目录（Vim）
 VIM_PLUGIN_CONFIG_DEST="$HOME/.vim/plugin-config"
-info "定义vim目标目录 $PLUGIN_CONFIG_SRC"
+info "定义vim目标目录 $VIM_PLUGIN_CONFIG_DEST"
 
 # 创建 Vim 插件配置目录并链接所有子目录
 if [ -d "$PLUGIN_CONFIG_SRC" ]; then
