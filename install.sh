@@ -1,26 +1,35 @@
-#!/usr/bin/env bash
-set -e  # 遇到错误立即退出
+#!/bin/sh
+# install.sh - dotfiles 安装主脚本
 
-# 获取脚本所在目录（保证符号链接路径正确）
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -e
 
-# 颜色输出函数
-info()  { echo -e "\033[32m[INFO]\033[0m $1"; }
-warn()  { echo -e "\033[33m[WARN]\033[0m $1"; }
-error() { echo -e "\033[31m[ERROR]\033[0m $1"; }
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# 默认安装所有模块，也可通过参数指定
-modules=("shell" "vim" "desktop")
+# 颜色输出函数（使用 printf 保证可移植性）
+info() {
+    printf '\033[32m[INFO]\033[0m %s\n' "$1"
+}
+warn() {
+    printf '\033[33m[WARN]\033[0m %s\n' "$1"
+}
+error() {
+    printf '\033[31m[ERROR]\033[0m %s\n' "$1"
+}
+
+# 模块选择：若提供参数则安装指定模块，否则安装全部
 if [ $# -gt 0 ]; then
-    modules=("$@")  # 使用命令行参数指定要安装的模块（例如 ./install.sh shell vim）
+    modules="$*"        # 将参数列表合并为空格分隔的字符串
+else
+    modules="shell vim desktop"   # 默认模块
 fi
 
-for module in "${modules[@]}"; do
+# 遍历模块
+for module in $modules; do
     module_script="$SCRIPT_DIR/install/${module}.sh"
     if [ -f "$module_script" ]; then
         info "执行模块: $module"
-        # 使用 source 让子模块能使用当前脚本的函数和变量
-        source "$module_script"
+        . "$module_script"        # 使用 . 代替 source
     else
         error "模块脚本不存在: $module_script"
         exit 1
