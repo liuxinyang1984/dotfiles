@@ -1,6 +1,6 @@
 info "vim.sh 运行目录$SCRIPT_DIR"
 # 定义源目录
-PLUGIN_CONFIG_SRC="$SCRIPT_DIR/plugin-config"
+PLUGIN_CONFIG_SRC="$SCRIPT_DIR/vim/plugin-config"
 info "定义vim源文件目录 $PLUGIN_CONFIG_SRC"
 
 # 目标目录（Vim）
