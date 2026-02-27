@@ -1,32 +1,82 @@
-info "vim.sh 运行目录$SCRIPT_DIR"
-# 定义源目录
-PLUGIN_CONFIG_SRC="$SCRIPT_DIR/vim/plugin-config"
-info "定义vim源文件目录 $PLUGIN_CONFIG_SRC"
+#!/bin/sh
+# vim.sh - 配置 vim 和 neovim
 
-# 目标目录（Vim）
-VIM_PLUGIN_CONFIG_DEST="$HOME/.vim/plugin-config"
-info "定义vim目标目录 $VIM_PLUGIN_CONFIG_DEST"
+info "vim.sh 运行目录: $SCRIPT_DIR"
 
-# 创建 Vim 插件配置目录并链接所有子目录
+# 定义 Vim 相关源文件目录
+VIM_SRC_DIR="$SCRIPT_DIR/vim"
+PLUGIN_CONFIG_SRC="$VIM_SRC_DIR/plugin-config"
+COMMON_VIM_SRC="$VIM_SRC_DIR/common.vim"
+VIMRC_SRC="$VIM_SRC_DIR/vimrc"
+INITVIM_SRC="$VIM_SRC_DIR/init.vim"
+
+info "Vim 源文件目录: $VIM_SRC_DIR"
+
+# 目标目录
+VIM_CONFIG_DIR="$HOME/.vim"
+VIM_PLUGIN_CONFIG_DEST="$VIM_CONFIG_DIR/plugin-config"
+VIM_COMMON_DEST="$VIM_CONFIG_DIR/common.vim"
+
+# 创建 Vim 配置目录（如果不存在）
+mkdir -p "$VIM_CONFIG_DIR"
+
+# 链接 common.vim（基础配置）
+if [ -f "$COMMON_VIM_SRC" ]; then
+    safe_link "$COMMON_VIM_SRC" "$VIM_COMMON_DEST" "common.vim"
+else
+    info "common.vim 不存在，跳过"
+fi
+
+# 链接插件配置子目录
 if [ -d "$PLUGIN_CONFIG_SRC" ]; then
+    info "插件配置源目录存在: $PLUGIN_CONFIG_SRC"
     mkdir -p "$VIM_PLUGIN_CONFIG_DEST"
-    # 使用 rsync 或 cp 将整个目录结构复制过去？但我们要的是符号链接，所以需要分别处理子目录
-    # 简单做法：将每个子目录分别链接
     for subdir in common vim nvim; do
         if [ -d "$PLUGIN_CONFIG_SRC/$subdir" ]; then
             mkdir -p "$VIM_PLUGIN_CONFIG_DEST/$subdir"
             for f in "$PLUGIN_CONFIG_SRC/$subdir"/*.vim; do
-                info "开始配置$(basename "$f")"
-                [ -f "$f" ] && safe_link "$f" "$VIM_PLUGIN_CONFIG_DEST/$subdir/$(basename "$f")" "插件配置 $subdir/$(basename "$f")"
+                if [ -f "$f" ]; then
+                    info "链接插件配置文件: $(basename "$f")"
+                    safe_link "$f" "$VIM_PLUGIN_CONFIG_DEST/$subdir/$(basename "$f")" "插件配置 $subdir/$(basename "$f")"
+                fi
             done
         fi
     done
+else
+    info "插件配置源目录不存在: $PLUGIN_CONFIG_SRC，跳过"
 fi
 
-# 如果 Neovim 已安装，将它的配置目录链接到 Vim 的插件配置目录（共享）
-if command -v nvim >/dev/null 2>&1; then
-    NVIM_PLUGIN_CONFIG_DEST="${XDG_CONFIG_HOME:-$HOME/.config}/nvim/plugin-config"
-    mkdir -p "$(dirname "$NVIM_PLUGIN_CONFIG_DEST")"
-    info "开始配置NVIM"
-    safe_link "$VIM_PLUGIN_CONFIG_DEST" "$NVIM_PLUGIN_CONFIG_DEST" "Neovim 插件配置目录"
+# ---------- Vim 专用配置 ----------
+if command -v vim >/dev/null 2>&1; then
+    info "检测到 vim，链接 .vimrc..."
+    if [ -f "$VIMRC_SRC" ]; then
+        safe_link "$VIMRC_SRC" "$HOME/.vimrc" "vimrc"
+    else
+        warn "vimrc 源文件不存在: $VIMRC_SRC"
+    fi
+else
+    info "vim 未安装，跳过 .vimrc 链接"
 fi
+
+# ---------- Neovim 专用配置 ----------
+if command -v nvim >/dev/null 2>&1; then
+    info "检测到 neovim，配置 neovim..."
+    NVIM_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
+    mkdir -p "$NVIM_CONFIG_DIR"
+
+    # 链接 init.vim
+    if [ -f "$INITVIM_SRC" ]; then
+        safe_link "$INITVIM_SRC" "$NVIM_CONFIG_DIR/init.vim" "init.vim"
+    else
+        warn "init.vim 源文件不存在: $INITVIM_SRC"
+    fi
+
+    # 将 Neovim 的插件配置目录链接到 Vim 的目录（已存在）
+    NVIM_PLUGIN_CONFIG_DEST="$NVIM_CONFIG_DIR/plugin-config"
+    info "为 neovim 创建插件配置目录链接: $NVIM_PLUGIN_CONFIG_DEST -> $VIM_PLUGIN_CONFIG_DEST"
+    safe_link "$VIM_PLUGIN_CONFIG_DEST" "$NVIM_PLUGIN_CONFIG_DEST" "Neovim 插件配置目录"
+else
+    info "neovim 未安装，跳过 neovim 配置"
+fi
+
+info "vim/neovim 配置完成"
