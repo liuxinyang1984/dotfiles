@@ -16,6 +16,7 @@ if [ -d "$PLUGIN_CONFIG_SRC" ]; then
         if [ -d "$PLUGIN_CONFIG_SRC/$subdir" ]; then
             mkdir -p "$VIM_PLUGIN_CONFIG_DEST/$subdir"
             for f in "$PLUGIN_CONFIG_SRC/$subdir"/*.vim; do
+                info "开始配置$(basename "$f")"
                 [ -f "$f" ] && safe_link "$f" "$VIM_PLUGIN_CONFIG_DEST/$subdir/$(basename "$f")" "插件配置 $subdir/$(basename "$f")"
             done
         fi
