@@ -76,6 +76,13 @@ imap <c-s> <ESC>:w<CR>
 " 窗口分屏
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 map s :none
+map sl :set splitright<CR>:vsplit<CR>
+map sh :set nosplitright<CR>:vsplit<CR>
+map sj :set splitbelow<CR>:split<CR>
+map sk :set nosplitbelow<CR>:split<CR>
+
+
+"切换分屏
 map <a-h> <c-w>h
 map wh    <c-w>h
 map <a-j> <c-w>j
@@ -85,12 +92,12 @@ map wk    <c-w>k
 map <a-l> <c-w>l
 map wl    <c-w>l
 
-map sl :set splitright<CR>:vsplit<CR>
-map sh :set nosplitright<CR>:vsplit<CR>
-map sj :set splitbelow<CR>:split<CR>
-map sk :set nosplitbelow<CR>:split<CR>
 
-
+"改变分屏大小
+map <a-H>   :vertical resize -5<CR>
+map <a-J>   :resize +5<CR>
+map <a-K>   :resize -5<CR>
+map <a-L>   :vertical resize +5<CR>
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " 主题设置 - gruvbox
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -101,17 +108,9 @@ if has("termguicolors")
 endif
 
 " 设置背景模式（dark/light）
-"set background=dark
-set background=light
+set background=dark
+"set background=light
 
-" 启用 gruvbox 主题
-autocmd vimenter * ++nested colorscheme gruvbox
-
-" gruvbox 增强选项（可选）
-let g:gruvbox_italic = 1           " 启用斜体（需终端支持）
-let g:gruvbox_contrast_dark = 'hard'  " 对比度: soft, medium, hard
-" let g:gruvbox_contrast_light = 'medium"  " 浅色模式对比度
-" let g:gruvbox_invert_selection = 0     " 是否反转选中区域颜色
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""

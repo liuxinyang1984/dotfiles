@@ -62,4 +62,13 @@ runtime! common.vim
 runtime! plugin-config/common/*.vim
 runtime! plugin-config/nvim/*.vim
 
+" 启用 gruvbox 主题
+autocmd vimenter * ++nested colorscheme gruvbox
+
+let g:gruvbox_italic = 1           " 启用斜体（需终端支持）
+let g:gruvbox_contrast_dark = 'soft'  " 对比度: soft, medium, hard
+" gruvbox 增强选项（可选）
+" let g:gruvbox_contrast_light = 'medium"  " 浅色模式对比度
+" let g:gruvbox_invert_selection = 0     " 是否反转选中区域颜色
+
 

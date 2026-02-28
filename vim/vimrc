@@ -8,14 +8,59 @@ endif
 
 
 
-" 通用基础配置
-source ~/.vim/common.vim
 
 " vim-plug 插件列表
 call plug#begin('~/.vim/plugged')
+"gruvbox主题
 Plug 'morhetz/gruvbox'
+
+Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
+
+"模糊搜索
+Plug 'yggdroot/leaderf'
+
+"代码块选择
+Plug 'gcmt/wildfire.vim'
+
+"符号包围
+"S  将选中的块添加符号包围 例:S'    将选中块用单引号包围
+"cs 将选中的块包围符号更换 例:cs'"  将单引号更换为双引号
+Plug 'tpope/vim-surround'
+
+"可视化缩进
+Plug 'Yggdroot/indentLine'
+
+"忘记sudo vim 可以:sudowrite或者:sw
+Plug 'lambdalisue/suda.vim'
+
+"快速注释
+Plug 'scrooloose/nerdcommenter' 
+
+Plug 'joker1007/vim-markdown-quote-syntax'
+Plug 'dhruvasagar/vim-table-mode'
+Plug 'joker1007/vim-markdown-quote-syntax'
+Plug 'dhruvasagar/vim-table-mode'
+
+Plug 'scrooloose/nerdtree'
+
+" 终端 
+Plug 'voldikss/vim-floaterm'
+
+" 终端里的图标（可选，需已安装 Nerdfont）
+Plug 'nvim-tree/nvim-web-devicons'
 call plug#end()
 
 " 加载插件独立配置（通用部分 + Vim 专用）
+runtime! common.vim
 runtime! plugin-config/common/*.vim
 runtime! plugin-config/vim/*.vim
+
+" 启用 gruvbox 主题
+colorscheme gruvbox
+
+let g:gruvbox_italic = 1           " 启用斜体（需终端支持）
+let g:gruvbox_contrast_dark = 'soft'  " 对比度: soft, medium, hard
+" gruvbox 增强选项（可选）
+" let g:gruvbox_contrast_light = 'medium"  " 浅色模式对比度
+" let g:gruvbox_invert_selection = 0     " 是否反转选中区域颜色
