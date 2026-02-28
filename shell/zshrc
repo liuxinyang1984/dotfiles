@@ -1,26 +1,16 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 #加载 Zsh 内置模块 (修复报错的关键)
 autoload -Uz vcs_info
-
-typeset -g POWERLEVEL9K_TTY_QUERY_TERMINAL_RESPONSE=0
-typeset -g POWERLEVEL9K_BACKGROUND_TRANSPARENCY=0
-typeset -g POWERLEVEL9K_COLOR_SCHEME='dark'
-
-# 1. 告诉所有插件不要询问终端背景色
-export XLIB_SKIP_ARGB_VISUALS=1
-# 2. 核心：禁用 p10k 的所有终端查询逻辑
-typeset -g POWERLEVEL9K_TTY_QUERY_TERMINAL_RESPONSE=0
-# 3. 针对某些版本的 p10k，还需要这个变量
-export P9K_TTY=0
 
 # 环境变量定义（越早越好，防止后续 source 失败）
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
-
-# P10k 瞬时提示（必须在顶部）
-if [[ -r "$XDG_CACHE_HOME/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "$XDG_CACHE_HOME/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 
 # 加载插件（建议先加载主题，再加载语法高亮）
 source /usr/share/zsh/plugins/powerlevel10k/powerlevel10k.zsh-theme
