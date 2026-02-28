@@ -51,30 +51,39 @@ safe_link() {
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# 颜色输出函数（使用 printf 保证可移植性）
-info() {
-    printf '\033[32m[INFO]\033[0m %s\n' "$1"
-}
-warn() {
-    printf '\033[33m[WARN]\033[0m %s\n' "$1"
-}
-error() {
-    printf '\033[31m[ERROR]\033[0m %s\n' "$1"
-}
+
+# 颜色输出函数
+info() { printf '\033[32m[INFO]\033[0m %s\n' "$1"; }
+warn() { printf '\033[33m[WARN]\033[0m %s\n' "$1"; }
+error() { printf '\033[31m[ERROR]\033[0m %s\n' "$1"; }
 
 # 模块选择：若提供参数则安装指定模块，否则安装全部
 if [ $# -gt 0 ]; then
-    modules="$*"        # 将参数列表合并为空格分隔的字符串
+    modules="$*"
 else
-    modules="shell vim desktop"   # 默认模块
+    modules="shell vim desktop"
 fi
 
-# 遍历模块
-for module in $modules; do
+# 遍历每个参数
+for arg in $modules; do
+    # 检查参数中是否包含冒号
+    case "$arg" in
+        *:*)
+            module="${arg%%:*}"   # 冒号前为模块名
+            sub="${arg#*:}"       # 冒号后为子模块
+            ;;
+        *)
+            module="$arg"
+            sub=""                # 无子模块，表示安装全部
+            ;;
+    esac
+
     module_script="$SCRIPT_DIR/install/${module}.sh"
     if [ -f "$module_script" ]; then
-        info "执行模块: $module"
-        . "$module_script"        # 使用 . 代替 source
+        info "执行模块: $module${sub:+ (子模块: $sub)}"
+        export INSTALL_SUB="$sub"
+        . "$module_script"
+        unset INSTALL_SUB
     else
         error "模块脚本不存在: $module_script"
         exit 1

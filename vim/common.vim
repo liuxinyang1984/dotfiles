@@ -101,10 +101,11 @@ if has("termguicolors")
 endif
 
 " 设置背景模式（dark/light）
-set background=dark
+"set background=dark
+set background=light
 
 " 启用 gruvbox 主题
-colorscheme gruvbox
+autocmd vimenter * ++nested colorscheme gruvbox
 
 " gruvbox 增强选项（可选）
 let g:gruvbox_italic = 1           " 启用斜体（需终端支持）
