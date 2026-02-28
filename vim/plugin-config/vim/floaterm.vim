@@ -1,4 +1,7 @@
 " --- Floaterm 设置 ---
+" 禁止 floaterm 里的终端在启动时读取全局 profile（加速启动）
+let g:floaterm_shell = 'zsh'
+
 " 设置浮动窗口大小
 let g:floaterm_width = 0.8
 let g:floaterm_height = 0.8
@@ -12,14 +15,11 @@ hi Floaterm guibg=black
 hi FloatermBorder guibg=orange guifg=orange
 
 " 快捷键绑定
-let g:floaterm_keymap_toggle = '<F12>'
-let g:floaterm_keymap_next   = '<F11>'
-let g:floaterm_keymap_prev   = '<F10>'
-let g:floaterm_keymap_new    = '<F9>'
+let g:floaterm_keymap_toggle = '<c-\>'
 
 " 退出终端模式的映射（在终端里按 ESC 直接回到 Normal 模式）
-tnoremap <Esc> <C-\><C-n>
+"tnoremap <Esc> <C-\><C-n>
 " Normal 模式
-nnoremap <silent> <C-\> :FloatermToggle<CR>
+"nnoremap <silent> <C-\> :FloatermToggle<CR>
 " Terminal 模式（在终端内部按下也能隐藏）
-tnoremap <silent> <C-\> <C-\><C-n>:FloatermToggle<CR>
+"tnoremap <silent> <C-\> <C-\><C-n>:FloatermToggle<CR>
