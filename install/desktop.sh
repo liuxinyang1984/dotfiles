@@ -17,8 +17,9 @@ install_suckless() {
         (
             cd "$src"
             rm -f config.h
-            make
             make PREFIX="$PREFIX" install
+            make clean
+            rm -f config.h
         )
     done
 
