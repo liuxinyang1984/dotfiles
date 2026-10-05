@@ -1,0 +1,12 @@
+[submodule "vendor/neovim"]
+	path = vendor/neovim
+	url = https://github.com/liuxinyang1984/neovim_lua.git
+	branch = master
+[submodule "vendor/vim_server"]
+	path = vendor/vim_server
+	url = https://github.com/liuxinyang1984/vim_server.git
+	branch = main
+[submodule "vendor/suckless"]
+	path = vendor/suckless
+	url = https://github.com/liuxinyang1984/suckless.git
+	branch = master

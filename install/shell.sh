@@ -3,8 +3,6 @@
 
 info "开始配置 shell..."
 
-# 定义目标目录
-XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 SHELL_CONFIG_DIR="$XDG_CONFIG_HOME/shell"
 BASH_CONFIG_DIR="$XDG_CONFIG_HOME/bash"
 ZSH_CONFIG_DIR="$XDG_CONFIG_HOME/zsh"
