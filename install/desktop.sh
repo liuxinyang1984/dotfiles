@@ -34,7 +34,8 @@ install_suckless() {
         info "跳过 mini-polkit（仅 dwm/X 会话需要）。安装: INSTALL_POLKIT=1 $0 desktop:suckless"
     fi
 
-    link_fontconfig
+    # shellcheck source=install/fontconfig.sh
+    . "$SCRIPT_DIR/install/fontconfig.sh"
     info "suckless 完成。dwm 需在 X 会话启动；PATH 需包含 $PREFIX/bin"
 }
 
@@ -50,7 +51,8 @@ install_hyprland() {
         fi
     done
 
-    link_fontconfig
+    # shellcheck source=install/fontconfig.sh
+    . "$SCRIPT_DIR/install/fontconfig.sh"
     info "hyprland 配置链接完成"
 }
 

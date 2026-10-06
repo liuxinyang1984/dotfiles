@@ -13,12 +13,14 @@ usage() {
   shell                 本仓 shell/（bashrc、zshrc、alias）
   nvim                  vendor/neovim → ~/.config/nvim
   vim                   vendor/vim_server，~/.vimrc source 入口
-  desktop:suckless      vendor/suckless（dwm/st/dmenu 编进 ~/.local）
-  desktop:hyprland      vendor/hyprland（仓登记后可用）
+  fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
+  desktop:suckless      vendor/suckless（dwm/st/dmenu 编进 ~/.local）+ fontconfig
+  desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
 
 示例:
   $0 shell nvim
   $0 vim
+  $0 fontconfig
   $0 desktop:suckless
 EOF
 }
@@ -51,7 +53,7 @@ for arg in "$@"; do
                 exit 1
             fi
             ;;
-        shell|nvim|vim)
+        shell|nvim|vim|fontconfig)
             if [ -n "$sub" ]; then
                 error "模块 $module 不接受子模块: $arg"
                 exit 1

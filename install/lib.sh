@@ -218,9 +218,3 @@ ensure_submodule() {
     sync_nested_submodules_to_tip "$dest" || true
 }
 
-link_fontconfig() {
-    src="$SCRIPT_DIR/config/fontconfig/fonts.conf"
-    dest="$XDG_CONFIG_HOME/fontconfig/fonts.conf"
-    mkdir -p "$XDG_CONFIG_HOME/fontconfig"
-    safe_link "$src" "$dest" "fontconfig"
-}
