@@ -14,6 +14,7 @@ usage() {
   nvim                  vendor/neovim → ~/.config/nvim
   vim                   vendor/vim_server，~/.vimrc source 入口
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
+  fcitx5-chinese        无 apk 时编译 fcitx5-chinese-addons（拼音）到 fcitx5 的 prefix
   desktop:suckless      vendor/suckless（dwm/st/dmenu 编进 ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
 
@@ -21,6 +22,7 @@ usage() {
   $0 shell nvim
   $0 vim
   $0 fontconfig
+  $0 fcitx5-chinese
   $0 desktop:suckless
 EOF
 }
@@ -53,7 +55,7 @@ for arg in "$@"; do
                 exit 1
             fi
             ;;
-        shell|nvim|vim|fontconfig)
+        shell|nvim|vim|fontconfig|fcitx5-chinese)
             if [ -n "$sub" ]; then
                 error "模块 $module 不接受子模块: $arg"
                 exit 1
