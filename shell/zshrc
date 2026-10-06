@@ -1,12 +1,12 @@
+# vcs_info 必须在 p10k instant prompt 之前：重绘 git 段会调用 prompt_vcs
+autoload -Uz vcs_info
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
-
-#加载 Zsh 内置模块 (修复报错的关键)
-autoload -Uz vcs_info
 
 # 环境变量定义（越早越好，防止后续 source 失败）
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
