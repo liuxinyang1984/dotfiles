@@ -50,6 +50,7 @@ safe_link() {
 
 # 子模块是否已在 .gitmodules 中登记
 submodule_registered() {
+    local relpath key p
     relpath="$1"
     for key in $(git -C "$SCRIPT_DIR" config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null); do
         p="$(git -C "$SCRIPT_DIR" config -f .gitmodules --get "$key")"
@@ -62,6 +63,8 @@ submodule_registered() {
 
 # 从 parent/.gitmodules 读取 path 对应的 branch（可为空）
 gitmodules_branch() {
+    # local：避免递归/嵌套调用时覆盖调用方变量（sh→bash 可用）
+    local parent path key p name
     parent="$1"
     path="$2"
     for key in $(git -C "$parent" config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null); do
@@ -73,42 +76,46 @@ gitmodules_branch() {
             return 0
         fi
     done
+    return 0
 }
 
 # 工作区是否干净（无未提交变更）
 git_workdir_clean() {
+    local repo
     repo="$1"
     [ -z "$(git -C "$repo" status --porcelain 2>/dev/null)" ]
 }
 
 # 解析要跟随的远程分支：显式 branch > origin/HEAD > master
 remote_tracking_branch() {
+    local repo preferred head
     repo="$1"
     preferred="$2"
 
     if [ -n "$preferred" ]; then
         printf '%s\n' "$preferred"
-        return
+        return 0
     fi
 
     head="$(git -C "$repo" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || true)"
     if [ -n "$head" ]; then
         printf '%s\n' "${head#refs/remotes/origin/}"
-        return
+        return 0
     fi
 
     git -C "$repo" remote set-head origin -a >/dev/null 2>&1 || true
     head="$(git -C "$repo" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || true)"
     if [ -n "$head" ]; then
         printf '%s\n' "${head#refs/remotes/origin/}"
-        return
+        return 0
     fi
 
     printf 'master\n'
 }
 
-# 将仓库对齐到 origin/<branch> tip（脏则跳过）
+# 将仓库对齐到 origin/<branch> tip（脏则沿用当前配置）
 sync_repo_to_tip() {
+    local repo preferred_branch name branch tip
     repo="$1"
     preferred_branch="$2"
     name="$3"
@@ -119,12 +126,15 @@ sync_repo_to_tip() {
     fi
 
     info "fetch $name"
-    git -C "$repo" fetch origin
+    if ! git -C "$repo" fetch origin; then
+        warn "$name fetch 失败，沿用当前配置继续安装"
+        return 0
+    fi
 
     branch="$(remote_tracking_branch "$repo" "$preferred_branch")"
     if ! git -C "$repo" rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
-        error "$name 没有 origin/$branch"
-        exit 1
+        warn "$name 没有 origin/$branch，沿用当前配置继续安装"
+        return 0
     fi
 
     tip="$(git -C "$repo" rev-parse --short "origin/$branch")"
@@ -134,18 +144,24 @@ sync_repo_to_tip() {
 
 # init 嵌套 submodule（缺则克隆）；已有且脏则沿用当前配置，干净才跟线上 tip
 sync_nested_submodules_to_tip() {
+    local parent nested nested_path nested_list nested_branch
     parent="$1"
 
     [ -f "$parent/.gitmodules" ] || return 0
 
-    for key in $(git -C "$parent" config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null); do
-        nested="$(git -C "$parent" config -f .gitmodules --get "$key")"
+    nested_list="$(git -C "$parent" config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+        | while read -r _k _p; do printf '%s\n' "$_p"; done)"
+
+    for nested in $nested_list; do
         [ -n "$nested" ] || continue
         nested_path="$parent/$nested"
 
         if [ ! -e "$nested_path/.git" ] && [ ! -f "$nested_path/.git" ]; then
             # 尚未检出：只 init 这一路，避免对其它已脏子仓做 checkout
-            git -C "$parent" submodule update --init -- "$nested"
+            git -C "$parent" submodule update --init -- "$nested" || {
+                warn "无法 init 嵌套 submodule: $nested"
+                continue
+            }
         fi
 
         if [ ! -e "$nested_path/.git" ] && [ ! -f "$nested_path/.git" ]; then
@@ -153,21 +169,22 @@ sync_nested_submodules_to_tip() {
             continue
         fi
 
-        # 已存在且脏：不要再 submodule update / tip sync，直接用当前工作区编译
+        # 已存在且脏：不要再 tip sync，直接用当前工作区编译
         if ! git_workdir_clean "$nested_path"; then
             info "$nested 工作区有未提交改动，沿用当前配置继续安装"
-            sync_nested_submodules_to_tip "$nested_path"
+            sync_nested_submodules_to_tip "$nested_path" || true
             continue
         fi
 
         nested_branch="$(gitmodules_branch "$parent" "$nested")"
-        sync_repo_to_tip "$nested_path" "$nested_branch" "$nested"
-        sync_nested_submodules_to_tip "$nested_path"
+        sync_repo_to_tip "$nested_path" "$nested_branch" "$nested" || true
+        sync_nested_submodules_to_tip "$nested_path" || true
     done
 }
 
-# 按参数用到的 path：init 后跟远程分支 tip（不 pin 父仓 SHA）
+# 按参数用到的 path：缺则 init；已有则跟 tip（脏则沿用）；不强制 checkout 父仓 pin SHA
 ensure_submodule() {
+    local relpath dest branch
     relpath="$1"
     dest="$SCRIPT_DIR/$relpath"
 
@@ -187,8 +204,9 @@ ensure_submodule() {
     fi
 
     info "确保 submodule: $relpath"
-    # 只 init 本层，不用 --recursive（避免嵌套先 pin 到父仓记录的 SHA）
-    git -C "$SCRIPT_DIR" submodule update --init -- "$relpath"
+    if [ ! -e "$dest/.git" ] && [ ! -f "$dest/.git" ]; then
+        git -C "$SCRIPT_DIR" submodule update --init -- "$relpath"
+    fi
 
     if [ ! -e "$dest/.git" ] && [ ! -f "$dest/.git" ] && [ ! -d "$dest/.git" ]; then
         error "submodule 初始化失败: $dest"
@@ -196,8 +214,8 @@ ensure_submodule() {
     fi
 
     branch="$(gitmodules_branch "$SCRIPT_DIR" "$relpath")"
-    sync_repo_to_tip "$dest" "$branch" "$relpath"
-    sync_nested_submodules_to_tip "$dest"
+    sync_repo_to_tip "$dest" "$branch" "$relpath" || true
+    sync_nested_submodules_to_tip "$dest" || true
 }
 
 link_fontconfig() {
