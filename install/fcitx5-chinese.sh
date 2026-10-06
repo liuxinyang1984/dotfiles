@@ -1,9 +1,11 @@
 #!/bin/sh
-# fcitx5-chinese.sh — 编译安装 fcitx5-chinese-addons（拼音等）
-# Alpine 无对应 apk 或版本不对时用。须装到与 fcitx5 相同的 prefix。
+# fcitx5-chinese.sh — 安装 fcitx5-chinese-addons（拼音等）
+# Alpine x86：优先用本仓 packages/alpine/x86 预编译 apk；否则有仓库包则跳过，再否则源码编译。
+# 编译安装须与 fcitx5 相同 prefix。
 
 FCITX5_CHINESE_REPO="${FCITX5_CHINESE_REPO:-https://github.com/fcitx/fcitx5-chinese-addons.git}"
 FCITX5_CHINESE_SRC="${FCITX5_CHINESE_SRC:-${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/fcitx5-chinese-addons}"
+FCITX5_CHINESE_APK_DIR="${FCITX5_CHINESE_APK_DIR:-$SCRIPT_DIR/packages/alpine/x86}"
 
 run_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -23,17 +25,61 @@ apk_has() {
     apk info -e "$1" >/dev/null 2>&1
 }
 
+alpine_apk_arch() {
+    if [ -r /etc/apk/arch ]; then
+        tr -d '[:space:]' </etc/apk/arch
+    elif command -v apk >/dev/null 2>&1; then
+        apk --print-arch 2>/dev/null
+    fi
+}
+
+# Alpine x86：装本仓预编译包。成功则返回 0；不适用或失败返回 1（继续后面逻辑）。
+try_bundled_x86_apk() {
+    local main lang
+    command -v apk >/dev/null 2>&1 || return 1
+    [ "$(alpine_apk_arch)" = "x86" ] || return 1
+    [ -d "$FCITX5_CHINESE_APK_DIR" ] || return 1
+
+    main=""
+    lang=""
+    for f in "$FCITX5_CHINESE_APK_DIR"/fcitx5-chinese-addons-[0-9]*.apk; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            *-lang-*) continue ;;
+            *) main="$f"; break ;;
+        esac
+    done
+    for f in "$FCITX5_CHINESE_APK_DIR"/fcitx5-chinese-addons-lang-*.apk; do
+        [ -f "$f" ] || continue
+        lang="$f"
+        break
+    done
+    [ -n "$main" ] && [ -f "$main" ] || return 1
+
+    if apk_has fcitx5-chinese-addons; then
+        info "已有 apk 包 fcitx5-chinese-addons，跳过"
+        return 0
+    fi
+
+    info "安装本仓 x86 apk：$main"
+    if [ -n "$lang" ] && [ -f "$lang" ]; then
+        run_root apk add --allow-untrusted "$main" "$lang"
+    else
+        run_root apk add --allow-untrusted "$main"
+    fi
+}
+
 pinyin_addon_present() {
     [ -e /usr/lib/fcitx5/pinyin.so ] || [ -e /usr/local/lib/fcitx5/pinyin.so ]
 }
 
 ensure_fcitx5_chinese_deps() {
     command -v cmake >/dev/null 2>&1 || {
-        error "需要 cmake。Alpine: doas apk add build-base cmake extra-cmake-modules samurai fcitx5-dev libime-dev boost-dev fmt-dev gettext-dev opencc-dev curl-dev nlohmann-json pkgconf git"
+        error "需要 cmake。Alpine: doas apk add build-base cmake extra-cmake-modules samurai fcitx5-dev libime-dev boost-dev fmt-dev gettext-dev opencc-dev curl-dev nlohmann-json pkgconf git；Arch: sudo pacman -S extra-cmake-modules boost fmt opencc nlohmann-json"
         exit 1
     }
     command -v git >/dev/null 2>&1 || { error "需要 git"; exit 1; }
-    command -v fcitx5 >/dev/null 2>&1 || { error "请先安装 fcitx5（apk add fcitx5 fcitx5-dev libime-dev）"; exit 1; }
+    command -v fcitx5 >/dev/null 2>&1 || { error "请先安装 fcitx5（Alpine: apk add fcitx5 fcitx5-dev libime-dev；Arch: pacman -S fcitx5 fcitx5-qt）"; exit 1; }
 }
 
 fcitx5_prefix() {
@@ -73,7 +119,9 @@ sync_chinese_addons_src() {
     git -C "$src" pull --ff-only || true
 }
 
-if apk_has fcitx5-chinese-addons; then
+if try_bundled_x86_apk; then
+    :
+elif apk_has fcitx5-chinese-addons; then
     info "已有 apk 包 fcitx5-chinese-addons，跳过编译"
 else
     if pinyin_addon_present; then

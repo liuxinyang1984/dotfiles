@@ -1,0 +1,48 @@
+# Contributor: Lindsay Zhou <i@lin.moe>
+# Maintainer: cookie <liuxinyang1984@gmail.com>
+pkgname=fcitx5-chinese-addons
+pkgver=5.1.15
+pkgrel=0
+pkgdesc="Chinese Addons for Fcitx (no GUI, Bonnell/i686)"
+url="https://github.com/fcitx/fcitx5-chinese-addons"
+arch="x86"
+license="LGPL-2.1-or-later AND GPL-2.0-or-later"
+makedepends="
+	boost-dev
+	cmake
+	curl-dev
+	extra-cmake-modules
+	fcitx5-dev
+	fmt-dev
+	gettext-dev
+	libime-dev
+	nlohmann-json
+	opencc-dev
+	pkgconf
+	samurai
+	"
+subpackages="$pkgname-lang"
+source="$pkgname-$pkgver.tar.gz::https://github.com/fcitx/fcitx5-chinese-addons/archive/refs/tags/$pkgver.tar.gz"
+options="net !check"
+
+build() {
+	export CFLAGS="$CFLAGS -march=bonnell -mtune=bonnell"
+	export CXXFLAGS="$CXXFLAGS -march=bonnell -mtune=bonnell"
+	cmake -B build -G Ninja \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DENABLE_TEST=OFF \
+		-DENABLE_BROWSER=OFF \
+		-DENABLE_GUI=OFF \
+		-DUSE_WEBKIT=OFF
+	cmake --build build
+}
+
+package() {
+	DESTDIR="$pkgdir" cmake --install build
+}
+
+sha512sums="
+e873d4565bc17a28706dcbe03c699bf4c54e015ac85d10050a23b7fd2997f1919e0427418b6848a26d26dbfdd383312bc61d4a07022037efcccdde3723fdcb40  fcitx5-chinese-addons-5.1.15.tar.gz
+"

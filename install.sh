@@ -14,8 +14,8 @@ usage() {
   nvim                  vendor/neovim → ~/.config/nvim
   vim                   vendor/vim_server，~/.vimrc source 入口
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
-  fcitx5-chinese        无 apk 时编译 fcitx5-chinese-addons（拼音）到 fcitx5 的 prefix
-  desktop:suckless      vendor/suckless（dwm/st/dmenu 编进 ~/.local）+ fontconfig
+  fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
+  desktop:suckless      vendor/suckless（dwm/st/dmenu/slstatus/tabbed/surf 编进 ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
 
 示例:

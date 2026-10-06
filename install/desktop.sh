@@ -1,5 +1,6 @@
 #!/bin/sh
 # desktop.sh — 由 install.sh source；必须带 INSTALL_SUB
+# suckless：dwm st dmenu slstatus tabbed surf → $HOME/.local（surf 需 webkit2gtk-4.1）
 
 install_suckless() {
     ensure_submodule vendor/suckless
@@ -7,7 +8,7 @@ install_suckless() {
     SUCKLESS_DIR="$SCRIPT_DIR/vendor/suckless"
     PREFIX="${SUCKLESS_PREFIX:-$HOME/.local}"
 
-    for c in dwm st dmenu; do
+    for c in dwm st dmenu slstatus tabbed surf; do
         src="$SUCKLESS_DIR/$c"
         if [ ! -d "$src" ]; then
             error "缺少 $src（suckless 嵌套 submodule 未检出）"
