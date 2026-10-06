@@ -114,7 +114,7 @@ sync_repo_to_tip() {
     name="$3"
 
     if ! git_workdir_clean "$repo"; then
-        warn "$name 工作区有未提交改动，跳过更新到线上 tip"
+        info "$name 工作区有未提交改动，沿用当前配置继续安装"
         return 0
     fi
 
@@ -132,22 +132,34 @@ sync_repo_to_tip() {
     git -C "$repo" checkout -B "$branch" "origin/$branch"
 }
 
-# init 嵌套 submodule（仅克隆，不钉最终 SHA），再各自跟线上 tip
+# init 嵌套 submodule（缺则克隆）；已有且脏则沿用当前配置，干净才跟线上 tip
 sync_nested_submodules_to_tip() {
     parent="$1"
 
     [ -f "$parent/.gitmodules" ] || return 0
 
-    git -C "$parent" submodule update --init
-
     for key in $(git -C "$parent" config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null); do
         nested="$(git -C "$parent" config -f .gitmodules --get "$key")"
         [ -n "$nested" ] || continue
         nested_path="$parent/$nested"
+
+        if [ ! -e "$nested_path/.git" ] && [ ! -f "$nested_path/.git" ]; then
+            # 尚未检出：只 init 这一路，避免对其它已脏子仓做 checkout
+            git -C "$parent" submodule update --init -- "$nested"
+        fi
+
         if [ ! -e "$nested_path/.git" ] && [ ! -f "$nested_path/.git" ]; then
             warn "嵌套 submodule 未检出: $nested_path"
             continue
         fi
+
+        # 已存在且脏：不要再 submodule update / tip sync，直接用当前工作区编译
+        if ! git_workdir_clean "$nested_path"; then
+            info "$nested 工作区有未提交改动，沿用当前配置继续安装"
+            sync_nested_submodules_to_tip "$nested_path"
+            continue
+        fi
+
         nested_branch="$(gitmodules_branch "$parent" "$nested")"
         sync_repo_to_tip "$nested_path" "$nested_branch" "$nested"
         sync_nested_submodules_to_tip "$nested_path"
