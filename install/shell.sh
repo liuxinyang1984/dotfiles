@@ -19,6 +19,9 @@ done
 # 链接ssh环境配置
 safe_link "$SCRIPT_DIR/shell/ssh.env" "$SHELL_CONFIG_DIR/ssh.env" "SSH 环境变量"
 
+# git 全局配置
+safe_link "$SCRIPT_DIR/shell/gitconfig" "$HOME/.gitconfig" "gitconfig"
+
 
 # 考虑将来用脚本代替
 # 链接所有 .env 文件
