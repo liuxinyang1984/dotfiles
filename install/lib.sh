@@ -218,3 +218,18 @@ ensure_submodule() {
     sync_nested_submodules_to_tip "$dest" || true
 }
 
+# 先同步 vendor/<path>，再执行该仓根目录 install.sh（子仓可单独 ./install.sh）
+run_vendor_install() {
+    local relpath dest inst
+    relpath="$1"
+    ensure_submodule "$relpath"
+    dest="$SCRIPT_DIR/$relpath"
+    inst="$dest/install.sh"
+    if [ ! -f "$inst" ]; then
+        error "$relpath 缺少 install.sh（请在子仓根目录提供可单独执行的安装脚本）"
+        exit 1
+    fi
+    info "调用 $relpath/install.sh"
+    sh "$inst"
+}
+

@@ -11,11 +11,11 @@ usage() {
 用法: $0 <模块> [模块...]
 
   shell                 本仓 shell/（bashrc、zshrc、alias）
-  nvim                  vendor/neovim → ~/.config/nvim
-  vim                   vendor/vim_server，~/.vimrc source 入口
+  nvim                  调用 vendor/neovim/install.sh
+  vim                   调用 vendor/vim_server/install.sh
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
   fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
-  desktop:suckless      vendor/suckless（dwm/st/dmenu/slstatus/tabbed/surf 编进 ~/.local）+ fontconfig
+  desktop:suckless      调用 suckless/install.sh（默认系统 PREFIX；SUCKLESS_USER=1 → ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
 
 示例:

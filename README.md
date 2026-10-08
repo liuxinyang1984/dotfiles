@@ -2,6 +2,8 @@
 
 按参数安装本机配置与工具。无参只打印用法。`vendor/` 是 git submodule，安装时跟对应远程分支 tip（工作区脏则沿用当前树）。
 
+各组件仓根目录有自己的 `install.sh`，可单独执行（例如 `~/git/neovim/install.sh`）。本仓对应模块会先同步 submodule，再调用 `vendor/<名>/install.sh`。fontconfig / fcitx5-chinese / shell（bash、gitconfig）仍只在本仓。zsh 仓尚未登记 submodule 时，用 `~/git/zshrc/install.sh`。
+
 ```bash
 ./install.sh <模块> [模块...]
 ```
@@ -13,12 +15,12 @@
 | `vim` | `vendor/vim_server`，`~/.vimrc` source 入口 |
 | `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
-| `desktop:suckless` | 编 `vendor/suckless` 进 `~/.local`，并走 fontconfig |
+| `desktop:suckless` | 调用 suckless `install.sh`（默认系统 PREFIX；`SUCKLESS_USER=1` 则 `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 链接 hyprland 配置（仓登记后可用），并走 fontconfig |
 
 ## desktop:suckless
 
-编译安装：**dwm、st、dmenu、slstatus、tabbed、surf**（`PREFIX` 默认 `$HOME/.local`）。mini-polkit 默认跳过：`INSTALL_POLKIT=1 ./install.sh desktop:suckless`。
+编译安装：**dwm、st、dmenu、slstatus、tabbed、surf**。默认 `doas`/`sudo make install`（`config.mk` PREFIX，一般为 `/usr/local`）。个人：`SUCKLESS_USER=1 ./install.sh desktop:suckless`。mini-polkit：`INSTALL_POLKIT=1 ./install.sh desktop:suckless`。
 
 源码与补丁说明在 [liuxinyang1984/suckless](https://github.com/liuxinyang1984/suckless)。dwm 会话里用 `slstatus &` 写状态栏，不要再叠一层 `xsetroot` 循环。
 
