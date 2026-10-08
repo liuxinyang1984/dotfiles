@@ -1,3 +1,4 @@
+# 已弃用：请用 ./install.sh zsh（vendor/zshrc）。本文件不再由 shell 模块链接。
 # vcs_info 必须在 p10k instant prompt 之前：重绘 git 段会调用 prompt_vcs
 autoload -Uz vcs_info
 
