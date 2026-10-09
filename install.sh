@@ -12,6 +12,7 @@ usage() {
 
   shell                 本仓 shell/：bashrc、alias、ssh.env、~/.gitconfig（不含 zsh）
   zsh                   调用 vendor/zshrc/install.sh（配置 → ~/.config/zsh）
+  tmux                  调用 vendor/tmux/install.sh（配置 → ~/.config/tmux）
   nvim                  调用 vendor/neovim/install.sh
   vim                   调用 vendor/vim_server/install.sh
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
@@ -20,7 +21,7 @@ usage() {
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
 
 示例:
-  $0 shell zsh nvim
+  $0 shell zsh tmux nvim
   $0 vim
   $0 fontconfig
   $0 fcitx5-chinese
@@ -56,7 +57,7 @@ for arg in "$@"; do
                 exit 1
             fi
             ;;
-        shell|zsh|nvim|vim|fontconfig|fcitx5-chinese)
+        shell|zsh|tmux|nvim|vim|fontconfig|fcitx5-chinese)
             if [ -n "$sub" ]; then
                 error "模块 $module 不接受子模块: $arg"
                 exit 1

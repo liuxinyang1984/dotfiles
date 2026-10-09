@@ -10,6 +10,7 @@
 |------|------|
 | `shell` | bashrc、共用 alias/`ssh.env`、`~/.gitconfig`（**不含 zsh**） |
 | `zsh` | 调用 `vendor/zshrc/install.sh` → `~/.config/zsh` + 插件 |
+| `tmux` | 调用 `vendor/tmux/install.sh` → `~/.config/tmux` + TPM 插件 |
 | `nvim` | 调用 `vendor/neovim/install.sh` → symlink `~/.config/nvim` |
 | `vim` | 调用 `vendor/vim_server/install.sh`（默认用户；`--system` → `/opt/vim-config`） |
 | `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
@@ -24,6 +25,7 @@
 | 组件 | 默认 | 个人 / 其它 |
 |------|------|-------------|
 | **zshrc** | 同步到 `~/.config/zsh`，插件 `~/.local/share/zsh/plugins` | `--dev` 直接 source 仓库；**无**系统安装 |
+| **tmux** | 同步到 `~/.config/tmux`，插件 `~/.config/tmux/plugins` | `--dev` 配置文件 symlink 到仓库；**无**系统安装 |
 | **neovim** | symlink 整仓 → `~/.config/nvim` | 仅个人 |
 | **vim_server** | `~/.vimrc` source 仓内 `vimrc` | `--system` → `/opt/vim-config`（需 doas/sudo） |
 | **suckless** | `doas`/`sudo make install`（config.mk PREFIX，通常 `/usr/local`） | `--user` → `~/.local`；可指定 `dwm`/`st`/…；`--polkit` |
