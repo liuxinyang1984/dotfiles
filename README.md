@@ -17,6 +17,7 @@
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
 | `desktop:suckless` | 调用 suckless `install.sh`（默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 仓登记后再用 |
+| `desktop:picom` | 调用 picom `install.sh`（默认 `/usr/local`；`PICOM_USER=1` → `~/.local`） |
 
 ## 安装约定（各组件 `install.sh`）
 
@@ -29,6 +30,7 @@
 | **neovim** | symlink 整仓 → `~/.config/nvim` | 仅个人 |
 | **vim_server** | `~/.vimrc` source 仓内 `vimrc` | `--system` → `/opt/vim-config`（需 doas/sudo） |
 | **suckless** | `doas`/`sudo make install`（config.mk PREFIX，通常 `/usr/local`） | `--user` → `~/.local`；可指定 `dwm`/`st`/…；`--polkit` |
+| **picom** | `meson` + `ninja install` → `/usr/local` | `--user` / `PICOM_USER=1` → `~/.local`；默认链 `picom.sample.conf` |
 | **fontconfig / fcitx5-chinese / shell** | 仅本仓脚本 | — |
 
 私货（API key、mysql、内网 ssh）放本机，例如 `~/.config/shell/local/*.alias`，不要进 git。
@@ -60,6 +62,28 @@ doas apk add build-base libx11-dev libxft-dev libxext-dev libxinerama-dev \
 ```bash
 ./install.sh desktop:suckless
 ```
+
+## desktop:picom
+
+X11 合成器（[liuxinyang1984/picom](https://github.com/liuxinyang1984/picom)）。默认装到 `/usr/local`；个人：`PICOM_USER=1`。默认把 `picom.sample.conf` 链到 `~/.config/picom/picom.conf`（已有则跳过）；不要配置：`PICOM_NO_CONFIG=1`。
+
+### 依赖
+
+按该仓 README 的库依赖，Arch：
+
+```bash
+sudo pacman -S base-devel meson ninja git asciidoc \
+  libx11 libxext libxcb xcb-util xcb-util-image xcb-util-renderutil \
+  xorgproto pixman libconfig libev uthash libglvnd mesa \
+  pcre2 dbus
+```
+
+```bash
+./install.sh desktop:picom
+# 个人前缀：PICOM_USER=1 ./install.sh desktop:picom
+```
+
+dwm 会话里启动：`picom &`。
 
 ## fcitx5-chinese
 

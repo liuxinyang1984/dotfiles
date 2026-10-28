@@ -42,6 +42,23 @@ install_hyprland() {
     info "hyprland 配置链接完成"
 }
 
+install_picom() {
+    ensure_submodule vendor/picom
+    dest="$SCRIPT_DIR/vendor/picom"
+    inst="$dest/install.sh"
+    if [ ! -f "$inst" ]; then
+        error "vendor/picom 缺少 install.sh"
+        exit 1
+    fi
+    info "调用 vendor/picom/install.sh"
+    set --
+    [ "${PICOM_USER:-}" = "1" ] && set -- "$@" --user
+    # 默认顺带链 sample 配置（已有则跳过）；PICOM_NO_CONFIG=1 跳过
+    [ "${PICOM_NO_CONFIG:-}" = "1" ] || set -- "$@" --config
+    sh "$inst" "$@"
+    info "picom 完成。dwm 会话里可: picom &"
+}
+
 case "$INSTALL_SUB" in
     suckless)
         install_suckless
@@ -49,8 +66,11 @@ case "$INSTALL_SUB" in
     hyprland)
         install_hyprland
         ;;
+    picom)
+        install_picom
+        ;;
     *)
-        error "未知桌面子模块: ${INSTALL_SUB:-（空）}（用 desktop:suckless 或 desktop:hyprland）"
+        error "未知桌面子模块: ${INSTALL_SUB:-（空）}（用 desktop:suckless|hyprland|picom）"
         exit 1
         ;;
 esac

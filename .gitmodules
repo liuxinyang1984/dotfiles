@@ -18,3 +18,7 @@
 	path = vendor/tmux
 	url = https://github.com/liuxinyang1984/tmux.git
 	branch = main
+[submodule "vendor/picom"]
+	path = vendor/picom
+	url = https://github.com/liuxinyang1984/picom.git
+	branch = master

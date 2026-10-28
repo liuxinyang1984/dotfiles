@@ -19,6 +19,7 @@ usage() {
   fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
   desktop:suckless      调用 suckless/install.sh（默认系统 PREFIX；SUCKLESS_USER=1 → ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
+  desktop:picom        调用 picom/install.sh（默认 /usr/local；PICOM_USER=1 → ~/.local）
 
 示例:
   $0 shell zsh tmux nvim
@@ -26,6 +27,7 @@ usage() {
   $0 fontconfig
   $0 fcitx5-chinese
   $0 desktop:suckless
+  $0 desktop:picom
 EOF
 }
 
@@ -53,7 +55,7 @@ for arg in "$@"; do
     case "$module" in
         desktop)
             if [ -z "$sub" ]; then
-                error "请指定 desktop:suckless 或 desktop:hyprland"
+                error "请指定 desktop:suckless、desktop:hyprland 或 desktop:picom"
                 exit 1
             fi
             ;;
