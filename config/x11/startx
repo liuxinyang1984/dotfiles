@@ -1,0 +1,17 @@
+#!/bin/sh
+# 示例：安装到 ~/.local/bin/startx（须排在 /usr/bin/startx 之前）
+#   install -m 755 ~/git/dotfiles/config/x11/startx ~/.local/bin/startx
+#
+# 系统 startx 会把第一个参数当成 client 程序；本包装把 kiosk|dwm 转交给 ~/.xinitrc。
+# 用法: startx | startx dwm | startx kiosk
+
+case "${1:-}" in
+kiosk|dwm)
+	session=$1
+	shift
+	exec /usr/bin/startx "$HOME/.xinitrc" "$session" "$@"
+	;;
+*)
+	exec /usr/bin/startx "$@"
+	;;
+esac

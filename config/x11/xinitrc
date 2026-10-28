@@ -1,0 +1,49 @@
+#!/bin/sh
+# 示例：复制或软链到 ~/.xinitrc
+#   ln -sf ~/git/dotfiles/config/x11/xinitrc ~/.xinitrc
+#
+# 搭配 config/x11/startx → ~/.local/bin/startx（PATH 须优先 ~/.local/bin）：
+#   startx           → DEFAULT_SESSION
+#   startx kiosk
+#   startx dwm
+#
+# 依赖：kiosk → vendor/tmux ./install.sh kiosk
+#       dwm   → ./install.sh desktop:suckless（+ 可选 desktop:picom）
+
+DEFAULT_SESSION=kiosk
+session=${1:-$DEFAULT_SESSION}
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+	export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+	mkdir -p "$XDG_RUNTIME_DIR"
+	chmod 700 "$XDG_RUNTIME_DIR"
+fi
+
+case "$session" in
+kiosk)
+	exec "$HOME/.local/bin/kiosk-session.sh"
+	;;
+dwm)
+	export GTK_IM_MODULE=fcitx
+	export QT_IM_MODULE=fcitx
+	export XMODIFIERS=@im=fcitx
+	export SDL_IM_MODULE=fcitx
+	command -v slstatus >/dev/null 2>&1 && slstatus &
+	if command -v feh >/dev/null 2>&1; then
+		mkdir -p "$HOME/Pictures/wallpapers"
+		if ls "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1; then
+			feh --bg-fill --randomize "$HOME/Pictures/wallpapers/"* &
+		fi
+	fi
+	# 自编译 picom（/usr/local 或 ~/.local）；v9 需 --experimental-backends（dual_kawase 等）
+	PICOM_BIN=""
+	for c in "$HOME/.local/bin/picom" /usr/local/bin/picom; do
+		[ -x "$c" ] && PICOM_BIN=$c && break
+	done
+	exec dbus-run-session -- sh -c "fcitx5 -d; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec dwm"
+	;;
+*)
+	echo "unknown session: $session (kiosk|dwm)" >&2
+	exit 1
+	;;
+esac

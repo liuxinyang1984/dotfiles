@@ -30,7 +30,7 @@
 | **neovim** | symlink 整仓 → `~/.config/nvim` | 仅个人 |
 | **vim_server** | `~/.vimrc` source 仓内 `vimrc` | `--system` → `/opt/vim-config`（需 doas/sudo） |
 | **suckless** | `doas`/`sudo make install`（config.mk PREFIX，通常 `/usr/local`） | `--user` → `~/.local`；可指定 `dwm`/`st`/…；`--polkit` |
-| **picom** | `meson` + `ninja install` → `/usr/local` | `--user` / `PICOM_USER=1` → `~/.local`；默认链 `picom.sample.conf` |
+| **picom** | `meson` + `ninja install` → `/usr/local` | `--user` / `PICOM_USER=1` → `~/.local`；默认链 `picom.conf` |
 | **fontconfig / fcitx5-chinese / shell** | 仅本仓脚本 | — |
 
 私货（API key、mysql、内网 ssh）放本机，例如 `~/.config/shell/local/*.alias`，不要进 git。
@@ -83,7 +83,30 @@ sudo pacman -S base-devel meson ninja git asciidoc \
 # 个人前缀：PICOM_USER=1 ./install.sh desktop:picom
 ```
 
-dwm 会话里启动：`picom &`。
+dwm 会话里由 `config/x11/xinitrc` 启动自编译 picom，并带 **`--experimental-backends -b`**（本 fork 的 dual_kawase / 动画需要）。
+
+## X11 会话（startx / kiosk / dwm）
+
+跨 tmux kiosk、suckless dwm、picom，示例在本仓：
+
+| 文件 | 用途 |
+|------|------|
+| [`config/x11/xinitrc`](config/x11/xinitrc) | `~/.xinitrc`：`DEFAULT_SESSION` + `case kiosk\|dwm` |
+| [`config/x11/startx`](config/x11/startx) | `~/.local/bin/startx`：支持 `startx dwm`（勿直接用系统 startx 传会话名） |
+
+```bash
+ln -sf ~/git/dotfiles/config/x11/xinitrc ~/.xinitrc
+install -m 755 ~/git/dotfiles/config/x11/startx ~/.local/bin/startx
+# PATH 里 ~/.local/bin 须在 /usr/bin 前（如 ~/.zprofile）
+```
+
+```bash
+startx          # 默认 kiosk（可改 xinitrc 里 DEFAULT_SESSION）
+startx dwm
+startx kiosk
+```
+
+前置：`./install.sh tmux` 且 `vendor/tmux/install.sh kiosk`；dwm 用 `./install.sh desktop:suckless`；合成器用 `./install.sh desktop:picom`。壁纸目录：`~/Pictures/wallpapers/`。
 
 ## fcitx5-chinese
 
