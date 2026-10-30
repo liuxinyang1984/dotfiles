@@ -39,10 +39,13 @@ dwm)
 		fi
 	fi
 	# 自编译 picom（/usr/local 或 ~/.local）；v9 需 --experimental-backends（dual_kawase 等）
+	# SKIP_PICOM=1 时不启动（SSH -Y / Xephyr 转发桌面很卡）
 	PICOM_BIN=""
-	for c in "$HOME/.local/bin/picom" /usr/local/bin/picom; do
-		[ -x "$c" ] && PICOM_BIN=$c && break
-	done
+	if [ "${SKIP_PICOM:-0}" != 1 ]; then
+		for c in "$HOME/.local/bin/picom" /usr/local/bin/picom; do
+			[ -x "$c" ] && PICOM_BIN=$c && break
+		done
+	fi
 	DWM_BIN=""
 	for c in "$HOME/.local/bin/dwm" /usr/local/bin/dwm; do
 		[ -x "$c" ] && DWM_BIN=$c && break
