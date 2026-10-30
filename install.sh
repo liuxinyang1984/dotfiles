@@ -17,6 +17,7 @@ usage() {
   vim                   调用 vendor/vim_server/install.sh
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
   fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
+  keyd                  安装 config/keyd/default.conf → /etc/keyd/，启用 keyd 服务
   desktop:suckless      调用 suckless/install.sh（默认系统 PREFIX；SUCKLESS_USER=1 → ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
   desktop:picom        调用 picom/install.sh（默认 /usr/local；PICOM_USER=1 → ~/.local）
@@ -26,6 +27,7 @@ usage() {
   $0 vim
   $0 fontconfig
   $0 fcitx5-chinese
+  $0 keyd
   $0 desktop:suckless
   $0 desktop:picom
 EOF
@@ -59,7 +61,7 @@ for arg in "$@"; do
                 exit 1
             fi
             ;;
-        shell|zsh|tmux|nvim|vim|fontconfig|fcitx5-chinese)
+        shell|zsh|tmux|nvim|vim|fontconfig|fcitx5-chinese|keyd)
             if [ -n "$sub" ]; then
                 error "模块 $module 不接受子模块: $arg"
                 exit 1

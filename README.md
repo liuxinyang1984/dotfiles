@@ -15,6 +15,7 @@
 | `vim` | 调用 `vendor/vim_server/install.sh`（默认用户；`--system` → `/opt/vim-config`） |
 | `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
+| `keyd` | 安装 `config/keyd/default.conf` → `/etc/keyd/`，`systemctl enable --now keyd` |
 | `desktop:suckless` | 调用 suckless `install.sh`（默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 仓登记后再用 |
 | `desktop:picom` | 调用 picom `install.sh`（默认 `/usr/local`；`PICOM_USER=1` → `~/.local`） |
@@ -107,6 +108,20 @@ startx kiosk
 ```
 
 前置：`./install.sh tmux` 且 `vendor/tmux/install.sh kiosk`；dwm 用 `./install.sh desktop:suckless`；合成器用 `./install.sh desktop:picom`。壁纸目录：`~/Pictures/wallpapers/`。
+
+## keyd
+
+键盘映射：`config/keyd/default.conf` → `/etc/keyd/default.conf`，并 `enable --now keyd`。
+
+- Caps：点按 Esc，按住 Ctrl
+- Esc → `` ` ``；Shift+Esc → `~`
+- Shift+Caps → Caps Lock
+
+```bash
+# Arch
+sudo pacman -S keyd
+./install.sh keyd
+```
 
 ## fcitx5-chinese
 
