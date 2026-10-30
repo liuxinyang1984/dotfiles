@@ -1,31 +1,30 @@
-# dwm 会话通知（dunst）。安装：
-#   pacman -S dunst libnotify
-#   ln -sf ~/git/dotfiles/config/dunst/dunstrc ~/.config/dunst/dunstrc
-# 测试：notify-send "dwm" "hello"
+# dunst — X11/dwm 通知（由本机 mako 配置移植）
+# 几何/超时对齐 config/mako/config；边框强调色用 dwm 选中色 #0099ff
+# 安装：./install.sh dunst ；测试：notify-send "dwm" "hello"
 
 [global]
     monitor = 0
     follow = mouse
-    width = (0, 360)
-    offset = (12, 48)
+    width = 350
+    offset = (12, 12)
     origin = top-right
     notification_limit = 5
     indicate_hidden = yes
     gap_size = 6
     padding = 10
-    horizontal_padding = 12
+    horizontal_padding = 10
     frame_width = 2
     frame_color = "#0099ff"
-    sort = yes
+    corner_radius = 4
     font = monospace 12
     markup = full
     format = "<b>%s</b>\n%b"
     alignment = left
     vertical_alignment = center
-    show_age_threshold = 60
     word_wrap = yes
     ellipsize = middle
-    ignore_dbusclose = no
+    # 接近 mako ignore-timeout：用 urgency 段的 timeout，不依赖应用给的超时
+    ignore_dbusclose = yes
     mouse_left_click = close_current
     mouse_middle_click = do_action, close_current
     mouse_right_click = close_all
@@ -34,13 +33,13 @@
     background = "#222222"
     foreground = "#bbbbbb"
     frame_color = "#444444"
-    timeout = 4
+    timeout = 5
 
 [urgency_normal]
     background = "#222222"
     foreground = "#eeeeee"
     frame_color = "#0099ff"
-    timeout = 6
+    timeout = 5
 
 [urgency_critical]
     background = "#222222"

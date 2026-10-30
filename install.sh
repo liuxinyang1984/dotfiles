@@ -18,7 +18,7 @@ usage() {
   fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
   fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
   keyd                  安装 config/keyd/default.conf → /etc/keyd/，启用 keyd 服务
-  dunst                 链接 config/dunst/dunstrc（dwm 通知；需已装 dunst）
+  dunst                 链接 dunst + mako 通知配置（dwm / Hyprland）
   desktop:suckless      调用 suckless/install.sh（默认系统 PREFIX；SUCKLESS_USER=1 → ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
   desktop:picom        调用 picom/install.sh（默认 /usr/local；PICOM_USER=1 → ~/.local）

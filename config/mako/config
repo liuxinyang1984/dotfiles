@@ -1,0 +1,14 @@
+# mako — Wayland notification daemon（本机 Hyprland 在用）
+# man 5 mako
+
+# 所有通知统一 5 秒后消失（忽略应用自带超时）
+default-timeout=5000
+ignore-timeout=1
+
+font=monospace 12
+width=350
+border-size=2
+border-radius=4
+padding=10
+anchor=top-right
+max-visible=5
