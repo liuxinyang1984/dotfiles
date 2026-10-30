@@ -40,7 +40,7 @@
 
 编译安装：**dwm、st、dmenu、dwmblocks、tabbed、surf**。默认系统 PREFIX。个人：`SUCKLESS_USER=1`。部分组件：`SUCKLESS_COMPONENTS="dwm st"`。mini-polkit：`INSTALL_POLKIT=1`。
 
-源码说明：[liuxinyang1984/suckless](https://github.com/liuxinyang1984/suckless)。状态栏用 **`dwmblocks &`**（fork：[dwmblocks-async](https://github.com/liuxinyang1984/dwmblocks-async)；脚本：[shell_scipt](https://github.com/liuxinyang1984/shell_scipt)/`status/`）。不要叠 `slstatus` / `xsetroot` 循环。
+源码说明：[liuxinyang1984/suckless](https://github.com/liuxinyang1984/suckless)。状态栏用 **`dwmblocks &`**（fork：[dwmblocks-async](https://github.com/liuxinyang1984/dwmblocks-async)；脚本：[shell_script](https://github.com/liuxinyang1984/shell_script)/`status/`）。不要叠 `slstatus` / `xsetroot` 循环。
 
 ### 依赖
 
