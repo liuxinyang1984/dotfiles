@@ -51,8 +51,8 @@ dwm)
 		[ -x "$c" ] && DWM_BIN=$c && break
 	done
 	[ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
-	# dunst 须在同一 dbus-run-session 内，应用的 notify-send 才能送到
-	exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; command -v dunst >/dev/null 2>&1 && dunst &; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+	# dunst 须在同一 dbus-run-session 内；注意 sh 不能写 `cmd &;`（& 后接 ; 会语法错误）
+	exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dunst >/dev/null 2>&1; then dunst & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
 	;;
 *)
 	echo "unknown session: $session (kiosk|dwm)" >&2
