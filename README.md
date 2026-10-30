@@ -16,6 +16,7 @@
 | `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
 | `keyd` | 安装 `config/keyd/default.conf` → `/etc/keyd/`，`systemctl enable --now keyd` |
+| `dunst` | 链接 `config/dunst/dunstrc`（dwm 桌面通知；需先装 `dunst`） |
 | `desktop:suckless` | 调用 suckless `install.sh`（含 **dwmblocks** 状态栏；默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 仓登记后再用 |
 | `desktop:picom` | 调用 picom `install.sh`（默认 `/usr/local`；`PICOM_USER=1` → `~/.local`） |
@@ -122,6 +123,20 @@ startx kiosk
 sudo pacman -S keyd
 ./install.sh keyd
 ```
+
+## dunst（dwm 通知）
+
+dwm / dwmblocks **不带**通知。X11 下用 [dunst](https://dunst-project.org/) 接 `org.freedesktop.Notifications`（`notify-send`）。`config/x11/xinitrc` 的 dwm 会话在 `dbus-run-session` 里启动 `dunst`。
+
+```bash
+# Arch
+sudo pacman -S dunst libnotify
+./install.sh dunst
+# 会话内测试：
+notify-send "dwm" "hello"
+```
+
+边框色与 dwm 选中边框一致（`#0099ff`）。
 
 ## fcitx5-chinese
 
