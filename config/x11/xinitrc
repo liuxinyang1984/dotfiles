@@ -24,6 +24,8 @@ kiosk)
 	exec "$HOME/.local/bin/kiosk-session.sh"
 	;;
 dwm)
+	# SSH / 非登录壳常无 ~/.local/bin；个人安装的 dwm、dwmblocks、picom 都在这
+	export PATH="${HOME}/.local/bin:${PATH}"
 	export GTK_IM_MODULE=fcitx
 	export QT_IM_MODULE=fcitx
 	export XMODIFIERS=@im=fcitx
@@ -41,7 +43,12 @@ dwm)
 	for c in "$HOME/.local/bin/picom" /usr/local/bin/picom; do
 		[ -x "$c" ] && PICOM_BIN=$c && break
 	done
-	exec dbus-run-session -- sh -c "fcitx5 -d; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec dwm"
+	DWM_BIN=""
+	for c in "$HOME/.local/bin/dwm" /usr/local/bin/dwm; do
+		[ -x "$c" ] && DWM_BIN=$c && break
+	done
+	[ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
+	exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
 	;;
 *)
 	echo "unknown session: $session (kiosk|dwm)" >&2
