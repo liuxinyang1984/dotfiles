@@ -28,7 +28,8 @@ dwm)
 	export QT_IM_MODULE=fcitx
 	export XMODIFIERS=@im=fcitx
 	export SDL_IM_MODULE=fcitx
-	command -v slstatus >/dev/null 2>&1 && slstatus &
+	# dwmblocks-async（二进制名仍为 dwmblocks）；勿与 slstatus 叠跑
+	command -v dwmblocks >/dev/null 2>&1 && dwmblocks &
 	if command -v feh >/dev/null 2>&1; then
 		mkdir -p "$HOME/Pictures/wallpapers"
 		if ls "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1; then

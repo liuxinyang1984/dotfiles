@@ -16,7 +16,7 @@
 | `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
 | `keyd` | 安装 `config/keyd/default.conf` → `/etc/keyd/`，`systemctl enable --now keyd` |
-| `desktop:suckless` | 调用 suckless `install.sh`（默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
+| `desktop:suckless` | 调用 suckless `install.sh`（含 **dwmblocks** 状态栏；默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 仓登记后再用 |
 | `desktop:picom` | 调用 picom `install.sh`（默认 `/usr/local`；`PICOM_USER=1` → `~/.local`） |
 
@@ -38,9 +38,9 @@
 
 ## desktop:suckless
 
-编译安装：**dwm、st、dmenu、slstatus、tabbed、surf**。默认系统 PREFIX。个人：`SUCKLESS_USER=1`。部分组件：`SUCKLESS_COMPONENTS="dwm st"`。mini-polkit：`INSTALL_POLKIT=1`。
+编译安装：**dwm、st、dmenu、dwmblocks、tabbed、surf**。默认系统 PREFIX。个人：`SUCKLESS_USER=1`。部分组件：`SUCKLESS_COMPONENTS="dwm st"`。mini-polkit：`INSTALL_POLKIT=1`。
 
-源码说明：[liuxinyang1984/suckless](https://github.com/liuxinyang1984/suckless)。状态栏用 `slstatus &`，不要叠 `xsetroot` 循环。
+源码说明：[liuxinyang1984/suckless](https://github.com/liuxinyang1984/suckless)。状态栏用 **`dwmblocks &`**（fork：[dwmblocks-async](https://github.com/liuxinyang1984/dwmblocks-async)；脚本：[shell_scipt](https://github.com/liuxinyang1984/shell_scipt)/`status/`）。不要叠 `slstatus` / `xsetroot` 循环。
 
 ### 依赖
 
