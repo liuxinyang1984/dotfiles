@@ -5,7 +5,8 @@
 [global]
     monitor = 0
     follow = mouse
-    width = 350
+    # (min, max)：随内容变宽，音量/亮度短通知更紧凑
+    width = (100, 350)
     offset = (12, 12)
     origin = top-right
     notification_limit = 5
