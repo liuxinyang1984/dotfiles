@@ -19,7 +19,8 @@
     corner_radius = 4
     font = monospace 12
     markup = full
-    format = "<b>%s</b>\n%b"
+    # 单行：图标/标题与正文同一行（如 󰕾 42%）
+    format = "<b>%s</b> %b"
     alignment = left
     vertical_alignment = center
     word_wrap = yes
