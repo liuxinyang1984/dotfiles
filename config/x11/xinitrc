@@ -51,8 +51,9 @@ dwm)
 		[ -x "$c" ] && DWM_BIN=$c && break
 	done
 	[ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
-	# dunst 须在同一 dbus-run-session 内；注意 sh 不能写 `cmd &;`（& 后接 ; 会语法错误）
-	exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dunst >/dev/null 2>&1; then dunst & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+	# dunst / clipmenud 须在同一 dbus-run-session 内；注意 sh 不能写 `cmd &;`（& 后接 ; 会语法错误）
+	# clipmenud：为 Mod+v（dmenu-clip）积累历史，依赖 clipmenu + xclip
+	exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
 	;;
 *)
 	echo "unknown session: $session (kiosk|dwm)" >&2
