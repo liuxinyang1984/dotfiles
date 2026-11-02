@@ -1,6 +1,7 @@
 #!/bin/sh
 # desktop.sh — 由 install.sh source；必须带 INSTALL_SUB
 # suckless：默认 sudo/doas make install（/usr/local）；个人装: SUCKLESS_USER=1
+# 装完 kiosk/suckless 后可选落地多启动（见 install/x11.sh）
 
 install_suckless() {
     ensure_submodule vendor/suckless
@@ -22,7 +23,13 @@ install_suckless() {
     # fontconfig 仍属本仓，不在 suckless 子仓里
     # shellcheck source=install/fontconfig.sh
     . "$SCRIPT_DIR/install/fontconfig.sh"
-    info "suckless 完成。dwm 需在 X 会话启动"
+    info "suckless 完成"
+
+    _X11_LIB_ONLY=1
+    # shellcheck source=install/x11.sh
+    . "$SCRIPT_DIR/install/x11.sh"
+    x11_offer_multistart_for_desktop dwm
+    unset _X11_LIB_ONLY
 }
 
 install_hyprland() {
@@ -42,21 +49,48 @@ install_hyprland() {
     info "hyprland 配置链接完成"
 }
 
-install_picom() {
-    ensure_submodule vendor/picom
-    dest="$SCRIPT_DIR/vendor/picom"
+install_kiosk() {
+    dest="$SCRIPT_DIR/config/x11/kiosk"
     inst="$dest/install.sh"
     if [ ! -f "$inst" ]; then
-        error "vendor/picom 缺少 install.sh"
+        error "缺少 config/x11/kiosk/install.sh"
         exit 1
     fi
-    info "调用 vendor/picom/install.sh"
+    info "调用 config/x11/kiosk/install.sh"
     set --
-    [ "${PICOM_USER:-}" = "1" ] && set -- "$@" --user
-    # 默认顺带链 sample 配置（已有则跳过）；PICOM_NO_CONFIG=1 跳过
-    [ "${PICOM_NO_CONFIG:-}" = "1" ] || set -- "$@" --config
+    [ "${KIOSK_COPY:-}" = "1" ] && set -- "$@" --copy
+    # 兼容旧环境变量（默认已是 symlink）
+    [ "${KIOSK_DEV:-}" = "1" ] && set -- "$@" --dev
     sh "$inst" "$@"
-    info "picom 完成。dwm 会话里可: picom &"
+    info "kiosk 脚本完成。真机: startx kiosk -- <cmd>；本机测: kiosk-xephyr.sh"
+
+    _X11_LIB_ONLY=1
+    # shellcheck source=install/x11.sh
+    . "$SCRIPT_DIR/install/x11.sh"
+    x11_offer_multistart_for_desktop kiosk
+    unset _X11_LIB_ONLY
+}
+
+install_fvwm() {
+    ensure_submodule vendor/fvwm
+    dest="$SCRIPT_DIR/vendor/fvwm"
+    inst="$dest/install.sh"
+    if [ ! -f "$inst" ]; then
+        error "vendor/fvwm 缺少 install.sh"
+        exit 1
+    fi
+    info "调用 vendor/fvwm/install.sh"
+    set --
+    [ "${FVWM_COPY:-}" = "1" ] && set -- "$@" --copy
+    [ "${FVWM_FORCE:-}" = "1" ] && set -- "$@" --force
+    sh "$inst" "$@"
+    info "fvwm 完成。startx fvwm；依赖: fvwm3 rofi"
+
+    _X11_LIB_ONLY=1
+    # shellcheck source=install/x11.sh
+    . "$SCRIPT_DIR/install/x11.sh"
+    x11_offer_multistart_for_desktop fvwm
+    unset _X11_LIB_ONLY
 }
 
 case "$INSTALL_SUB" in
@@ -67,10 +101,18 @@ case "$INSTALL_SUB" in
         install_hyprland
         ;;
     picom)
-        install_picom
+        warn "desktop:picom 已迁到 x11:picom，转发中"
+        # shellcheck source=install/x11.sh
+        . "$SCRIPT_DIR/install/x11.sh"
+        ;;
+    kiosk)
+        install_kiosk
+        ;;
+    fvwm)
+        install_fvwm
         ;;
     *)
-        error "未知桌面子模块: ${INSTALL_SUB:-（空）}（用 desktop:suckless|hyprland|picom）"
+        error "未知桌面子模块: ${INSTALL_SUB:-（空）}（用 desktop:suckless|hyprland|kiosk|fvwm；picom → x11:picom）"
         exit 1
         ;;
 esac

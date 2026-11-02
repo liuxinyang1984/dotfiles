@@ -1,0 +1,174 @@
+#!/bin/sh
+# x11.sh — 由 install.sh source；X 会话入口与 X 上配件（非某一种 desktop）
+#
+#   ./install.sh x11:multistart
+#   ./install.sh x11:picom
+#
+# 环境变量:
+#   X11_DEFAULT_SESSION=kiosk|dwm|fvwm   写入 ~/.config/x11/default-session
+#   X11_MULTISTART=1|0                   desktop 安装时强制装/跳过多启动（非交互）
+#
+# desktop 侧若只想复用函数：_X11_LIB_ONLY=1 . install/x11.sh
+
+X11_MARKER='# dotfiles-x11-session:1'
+X11_DEFAULT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/x11/default-session"
+X11_MULTISTART_DIR="$SCRIPT_DIR/config/x11/multistart"
+X11_SESSIONS='kiosk|dwm|fvwm'
+
+x11_is_our_multistart() {
+	[ -e "$HOME/.xinitrc" ] || return 1
+	grep -q "^${X11_MARKER}$" "$HOME/.xinitrc" 2>/dev/null
+}
+
+x11_set_default_session() {
+	_sess="$1"
+	case "$_sess" in
+	kiosk|dwm|fvwm) ;;
+	*)
+		error "默认会话无效: ${_sess}（${X11_SESSIONS}）"
+		return 1
+		;;
+	esac
+	mkdir -p "$(dirname "$X11_DEFAULT_FILE")"
+	printf '%s\n' "$_sess" >"$X11_DEFAULT_FILE"
+	info "默认会话 → $X11_DEFAULT_FILE ($_sess)"
+}
+
+x11_warn_startx_path() {
+	_ours="$HOME/.local/bin/startx"
+	[ -x "$_ours" ] || return 0
+	_resolved="$(command -v startx 2>/dev/null || true)"
+	if [ "$_resolved" != "$_ours" ]; then
+		warn "PATH 里 startx 不是 ~/.local/bin/startx（当前: ${_resolved:-无}）"
+		warn "请把 ~/.local/bin 放到 /usr/bin 之前，或显式调用 ~/.local/bin/startx"
+	fi
+}
+
+install_x11_multistart() {
+	_xinitrc="$X11_MULTISTART_DIR/xinitrc"
+	_startx="$X11_MULTISTART_DIR/startx"
+	if [ ! -f "$_xinitrc" ] || [ ! -f "$_startx" ]; then
+		error "缺少 multistart 文件: $X11_MULTISTART_DIR"
+		exit 1
+	fi
+
+	safe_link "$_xinitrc" "$HOME/.xinitrc" "multistart xinitrc"
+	mkdir -p "$HOME/.local/bin"
+	ln -sfn "$_startx" "$HOME/.local/bin/startx"
+	info "startx 包装 → $HOME/.local/bin/startx"
+
+	if [ -n "${X11_DEFAULT_SESSION:-}" ]; then
+		x11_set_default_session "$X11_DEFAULT_SESSION" || exit 1
+	fi
+
+	x11_warn_startx_path
+	info "multistart 完成。startx | startx dwm | startx kiosk -- <cmd>"
+}
+
+install_x11_picom() {
+	ensure_submodule vendor/picom
+	dest="$SCRIPT_DIR/vendor/picom"
+	inst="$dest/install.sh"
+	if [ ! -f "$inst" ]; then
+		error "vendor/picom 缺少 install.sh"
+		exit 1
+	fi
+	info "调用 vendor/picom/install.sh"
+	set --
+	[ "${PICOM_USER:-}" = "1" ] && set -- "$@" --user
+	[ "${PICOM_NO_CONFIG:-}" = "1" ] || set -- "$@" --config
+	sh "$inst" "$@"
+	info "picom 完成。dwm（multistart）会话会自动起；也可手动: picom --experimental-backends -b"
+}
+
+# desktop:* 装完后调用；$1 = kiosk|dwm|fvwm
+x11_offer_multistart_for_desktop() {
+	_want="$1"
+	case "$_want" in
+	kiosk|dwm|fvwm) ;;
+	*)
+		error "x11_offer_multistart_for_desktop: 无效会话 $_want"
+		return 1
+		;;
+	esac
+
+	# 非交互覆盖
+	case "${X11_MULTISTART:-}" in
+	0)
+		info "X11_MULTISTART=0，跳过多启动"
+		return 0
+		;;
+	1)
+		install_x11_multistart
+		x11_set_default_session "${X11_DEFAULT_SESSION:-$_want}" || return 1
+		return 0
+		;;
+	esac
+
+	if x11_is_our_multistart; then
+		info "已是本仓多启动 xinitrc，不动入口"
+		if [ -t 0 ]; then
+			printf "是否将默认会话写成 %s？[y/N] " "$_want"
+			read -r _reply || _reply=
+			case "$_reply" in
+			[yY]|[yY][eE][sS])
+				x11_set_default_session "$_want" || return 1
+				;;
+			*)
+				info "保留现有默认会话"
+				;;
+			esac
+		fi
+		return 0
+	fi
+
+	if [ ! -t 0 ]; then
+		info "非交互且未设 X11_MULTISTART，只装会话、不改 ~/.xinitrc"
+		info "需要多启动时: ./install.sh x11:multistart  或 X11_MULTISTART=1"
+		return 0
+	fi
+
+	printf "是否安装本仓多启动（~/.xinitrc + ~/.local/bin/startx）？[y/N] "
+	read -r _reply || _reply=
+	case "$_reply" in
+	[yY]|[yY][eE][sS])
+		install_x11_multistart
+		printf "是否把默认会话写成 %s？[y/N] " "$_want"
+		read -r _reply2 || _reply2=
+		case "$_reply2" in
+		[yY]|[yY][eE][sS])
+			x11_set_default_session "$_want" || return 1
+			;;
+		*)
+			info "未改默认会话（无参 startx → xinitrc 内 DEFAULT_SESSION 或 default-session 文件）"
+			;;
+		esac
+		;;
+	*)
+		info "只装会话，不改 ~/.xinitrc。需要时: ./install.sh x11:multistart"
+		;;
+	esac
+}
+
+x11_dispatch() {
+	case "${INSTALL_SUB:-}" in
+	multistart)
+		install_x11_multistart
+		;;
+	picom)
+		install_x11_picom
+		;;
+	"")
+		error "请指定 x11:multistart 或 x11:picom"
+		exit 1
+		;;
+	*)
+		error "未知 x11 子模块: ${INSTALL_SUB}（用 x11:multistart / x11:picom）"
+		exit 1
+		;;
+	esac
+}
+
+if [ "${_X11_LIB_ONLY:-0}" != 1 ]; then
+	x11_dispatch
+fi

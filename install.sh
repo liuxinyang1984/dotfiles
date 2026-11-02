@@ -21,7 +21,10 @@ usage() {
   dunst                 链接 dunst + mako 通知配置（dwm / Hyprland）
   desktop:suckless      调用 suckless/install.sh（默认系统 PREFIX；SUCKLESS_USER=1 → ~/.local）+ fontconfig
   desktop:hyprland      vendor/hyprland（仓登记后可用）+ fontconfig
-  desktop:picom        调用 picom/install.sh（默认 /usr/local；PICOM_USER=1 → ~/.local）
+  desktop:kiosk         config/x11/kiosk → ~/.local/bin（默认 symlink；KIOSK_COPY=1 → 拷贝）
+  desktop:fvwm          vendor/fvwm → ~/.fvwm（默认 symlink；FVWM_COPY=1 / FVWM_FORCE=1）
+  x11:multistart        多启动：~/.xinitrc + ~/.local/bin/startx
+  x11:picom             调用 vendor/picom/install.sh（X 合成器；desktop:picom 仍兼容转发）
 
 示例:
   $0 shell zsh tmux nvim
@@ -30,8 +33,11 @@ usage() {
   $0 fcitx5-chinese
   $0 keyd
   $0 dunst
+  $0 x11:multistart
+  $0 x11:picom
   $0 desktop:suckless
-  $0 desktop:picom
+  $0 desktop:kiosk
+  $0 desktop:fvwm
 EOF
 }
 
@@ -59,7 +65,13 @@ for arg in "$@"; do
     case "$module" in
         desktop)
             if [ -z "$sub" ]; then
-                error "请指定 desktop:suckless、desktop:hyprland 或 desktop:picom"
+                error "请指定 desktop:suckless、desktop:hyprland、desktop:kiosk 或 desktop:fvwm（picom → x11:picom）"
+                exit 1
+            fi
+            ;;
+        x11)
+            if [ -z "$sub" ]; then
+                error "请指定 x11:multistart 或 x11:picom"
                 exit 1
             fi
             ;;

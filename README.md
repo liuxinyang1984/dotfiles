@@ -19,21 +19,23 @@
 | `dunst` | 链接 `config/dunst/dunstrc` + `config/mako/config`（dwm / Hyprland 通知） |
 | `desktop:suckless` | 调用 suckless `install.sh`（含 **dwmblocks** 状态栏；默认系统 PREFIX；`SUCKLESS_USER=1` → `~/.local`）+ fontconfig |
 | `desktop:hyprland` | 仓登记后再用 |
-| `desktop:picom` | 调用 picom `install.sh`（默认 `/usr/local`；`PICOM_USER=1` → `~/.local`） |
+| `desktop:kiosk` | [`config/x11/kiosk/`](config/x11/kiosk/) → `~/.local/bin`（默认 symlink；`KIOSK_COPY=1` 拷贝）；可询多启动 |
+| `desktop:fvwm` | [`vendor/fvwm`](vendor/fvwm) → `~/.fvwm`（默认 symlink；`FVWM_COPY=1` / `FVWM_FORCE=1`）；可询多启动 |
+| `x11:multistart` | 多启动 → [`config/x11/multistart/`](config/x11/multistart/) |
+| `x11:picom` | X 合成器 → `vendor/picom`（[`config/x11/picom/`](config/x11/picom/)）；旧名 `desktop:picom` 仍转发 |
 
 ## 安装约定（各组件 `install.sh`）
 
 组件仓根目录自带 `install.sh`，可单独跑；本仓模块先 `ensure_submodule` 再转发。
 
-| 组件 | 默认 | 个人 / 其它 |
-|------|------|-------------|
-| **zshrc** | 同步到 `~/.config/zsh`，插件 `~/.local/share/zsh/plugins` | `--dev` 直接 source 仓库；**无**系统安装 |
-| **tmux** | 同步到 `~/.config/tmux`，插件 `~/.config/tmux/plugins` | `--dev` 配置文件 symlink 到仓库；**无**系统安装 |
-| **neovim** | symlink 整仓 → `~/.config/nvim` | 仅个人 |
-| **vim_server** | `~/.vimrc` source 仓内 `vimrc` | `--system` → `/opt/vim-config`（需 doas/sudo） |
-| **suckless** | `doas`/`sudo make install`（config.mk PREFIX，通常 `/usr/local`） | `--user` → `~/.local`；可指定 `dwm`/`st`/…；`--polkit` |
-| **picom** | `meson` + `ninja install` → `/usr/local` | `--user` / `PICOM_USER=1` → `~/.local`；默认链 `picom.conf` |
-| **fontconfig / fcitx5-chinese / shell** | 仅本仓脚本 | — |
+**配置类统一：默认 symlink（改仓即生效）；要落地拷贝用 `--copy`。** `--dev` 仍接受，等同默认。本仓 `safe_link` 同此约定。
+
+| 组件 | 默认 | 其它 |
+|------|------|------|
+| **zshrc / tmux / neovim / fvwm / kiosk** | symlink | `--copy` |
+| **shell / dunst / fontconfig / x11:multistart** | `safe_link` | — |
+| **vim_server** | `~/.vimrc` **source 本仓**（勿链 vimrc 文件；效果同跟仓） | `--system [--prefix DIR]` 拷贝到目录（默认 `/opt/vim-config`，可改任意路径） |
+| **suckless / picom** | 编译安装 | `--user` / 环境变量 → `~/.local` |
 
 私货（API key、mysql、内网 ssh）放本机，例如 `~/.config/shell/local/*.alias`，不要进 git。
 
@@ -65,13 +67,25 @@ doas apk add build-base libx11-dev libxft-dev libxext-dev libxinerama-dev \
 ./install.sh desktop:suckless
 ```
 
-## desktop:picom
+## X11 / desktop
 
-X11 合成器（[liuxinyang1984/picom](https://github.com/liuxinyang1984/picom)）。默认装到 `/usr/local`；个人：`PICOM_USER=1`。默认把 `picom.sample.conf` 链到 `~/.config/picom/picom.conf`（已有则跳过）；不要配置：`PICOM_NO_CONFIG=1`。
+| 前缀 | 含义 |
+|------|------|
+| `x11:*` | [`multistart/`](config/x11/multistart/)、[`picom/`](config/x11/picom/) |
+| `desktop:*` | [`kiosk/`](config/x11/kiosk/)、fvwm、suckless、hyprland |
 
-### 依赖
+详见 [`config/x11/README.md`](config/x11/README.md)。
 
-按该仓 README 的库依赖，Arch：
+## x11:picom
+
+X 合成器（[liuxinyang1984/picom](https://github.com/liuxinyang1984/picom)）。默认 `/usr/local`；个人：`PICOM_USER=1`。默认链仓内 conf → `~/.config/picom/picom.conf`（已有则跳过）；`PICOM_NO_CONFIG=1` 跳过。
+
+```bash
+./install.sh x11:picom
+PICOM_USER=1 ./install.sh x11:picom
+```
+
+Arch 依赖示例：
 
 ```bash
 sudo pacman -S base-devel meson ninja git asciidoc \
@@ -80,35 +94,23 @@ sudo pacman -S base-devel meson ninja git asciidoc \
   pcre2 dbus
 ```
 
-```bash
-./install.sh desktop:picom
-# 个人前缀：PICOM_USER=1 ./install.sh desktop:picom
-```
+dwm 多启动会话会带 `--experimental-backends -b` 起 picom。
 
-dwm 会话里由 `config/x11/xinitrc` 启动自编译 picom，并带 **`--experimental-backends -b`**（本 fork 的 dual_kawase / 动画需要）。
-
-## X11 会话（startx / kiosk / dwm）
-
-跨 tmux kiosk、suckless dwm、picom，示例在本仓：
-
-| 文件 | 用途 |
-|------|------|
-| [`config/x11/xinitrc`](config/x11/xinitrc) | `~/.xinitrc`：`DEFAULT_SESSION` + `case kiosk\|dwm` |
-| [`config/x11/startx`](config/x11/startx) | `~/.local/bin/startx`：支持 `startx dwm`（勿直接用系统 startx 传会话名） |
+## X11 会话
 
 ```bash
-ln -sf ~/git/dotfiles/config/x11/xinitrc ~/.xinitrc
-install -m 755 ~/git/dotfiles/config/x11/startx ~/.local/bin/startx
-# PATH 里 ~/.local/bin 须在 /usr/bin 前（如 ~/.zprofile）
+./install.sh x11:multistart
+./install.sh x11:picom
+./install.sh desktop:kiosk
+./install.sh desktop:fvwm           # FVWM_FORCE=1 若已有 ~/.fvwm
+# X11_MULTISTART=1 X11_DEFAULT_SESSION=fvwm ./install.sh desktop:fvwm
+
+startx fvwm
+startx kiosk -- alacritty
+kiosk-xephyr.sh st -e nvim
 ```
 
-```bash
-startx          # 默认 kiosk（可改 xinitrc 里 DEFAULT_SESSION）
-startx dwm
-startx kiosk
-```
-
-前置：`./install.sh tmux` 且 `vendor/tmux/install.sh kiosk`；dwm 用 `./install.sh desktop:suckless`；合成器用 `./install.sh desktop:picom`。壁纸目录：`~/Pictures/wallpapers/`。
+默认会话：`~/.config/x11/default-session`（`kiosk`|`dwm`|`fvwm`）。壁纸：`~/Pictures/wallpapers/`。
 
 ## keyd
 

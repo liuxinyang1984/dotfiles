@@ -1,0 +1,25 @@
+#!/bin/sh
+# 多启动包装：安装到 ~/.local/bin/startx（须排在 /usr/bin/startx 之前）
+#   install -m 755 ~/git/dotfiles/config/x11/multistart/startx ~/.local/bin/startx
+#
+# 系统 startx 会把第一个参数当成 client；本包装把会话名转交给 ~/.xinitrc。
+# 用法:
+#   startx
+#   startx dwm
+#   startx fvwm
+#   startx kiosk
+#   startx kiosk -- alacritty
+#   startx kiosk -- st -e nvim
+
+case "${1:-}" in
+kiosk|dwm|fvwm)
+	session=$1
+	shift
+	# 允许 startx kiosk -- cmd...（吞掉单独的 --）
+	[ "${1:-}" = "--" ] && shift
+	exec /usr/bin/startx "$HOME/.xinitrc" "$session" "$@"
+	;;
+*)
+	exec /usr/bin/startx "$@"
+	;;
+esac

@@ -1,0 +1,158 @@
+#!/bin/sh
+# 无 WM：fcitx5 + 启动给定命令并将窗口铺满当前屏
+# POSIX sh（#!/bin/sh；勿用 /usr/bin/bash）
+#
+# 用法（参数即要执行的命令，默认可被环境变量覆盖）:
+#   kiosk-session.sh                         # 默认见下
+#   kiosk-session.sh alacritty
+#   kiosk-session.sh foot
+#   kiosk-session.sh st -e nvim
+#   kiosk-session.sh qutebrowser
+#   startx kiosk -- alacritty                # 经 multistart xinitrc
+#
+# 默认命令（无参数时）:
+#   KIOSK_CMD  — 若设置则用 shell -c 执行整串
+#   否则: st -e tmux new-session -A -s ${KIOSK_SESSION:-kiosk}
+#
+# 其它环境变量:
+#   KIOSK_OUTPUT / KIOSK_GEOM / KIOSK_LOG
+#
+# 安装: 父仓 ./install.sh desktop:kiosk → ~/.local/bin/
+
+KIOSK_LOG="${KIOSK_LOG:-$HOME/kiosk-session.log}"
+exec >>"$KIOSK_LOG" 2>&1
+echo "===== $(date) DISPLAY=${DISPLAY:-} cmd: $* ====="
+
+export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH:-}"
+
+kiosk_sleep() {
+	if command -v usleep >/dev/null 2>&1; then
+		usleep "$1"
+	else
+		sleep 1
+	fi
+}
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+	export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+	mkdir -p "$XDG_RUNTIME_DIR"
+	chmod 700 "$XDG_RUNTIME_DIR"
+fi
+
+export LC_CTYPE="${LC_CTYPE:-C.UTF-8}"
+export GTK_IM_MODULE=fcitx
+export QT_IM_MODULE=fcitx
+export XMODIFIERS="@im=fcitx"
+export SDL_IM_MODULE=fcitx
+
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+	if command -v dbus-launch >/dev/null 2>&1; then
+		eval "$(dbus-launch --sh-syntax)"
+	else
+		echo "WARN: no dbus-launch"
+	fi
+fi
+
+fcitx5 -d --replace >/dev/null 2>&1 || fcitx5 -d >/dev/null 2>&1 || true
+kiosk_sleep 300000
+
+kiosk_geom() {
+	_line=""
+	_geom=""
+	_dim=""
+
+	if [ -n "${KIOSK_GEOM:-}" ]; then
+		printf "%s\n" "$KIOSK_GEOM"
+		return 0
+	fi
+
+	if [ -n "${KIOSK_OUTPUT:-}" ]; then
+		_line="$(xrandr --current 2>/dev/null | awk -v o="$KIOSK_OUTPUT" '$1==o && / connected/{print; exit}')" || true
+	fi
+	if [ -z "$_line" ]; then
+		_line="$(xrandr --current 2>/dev/null | awk '/ connected primary/{print; exit}')" || true
+	fi
+	if [ -z "$_line" ]; then
+		_line="$(xrandr --current 2>/dev/null | awk '/ connected/{print; exit}')" || true
+	fi
+	echo "xrandr_line=${_line}" >&2
+
+	_geom="$(printf "%s\n" "$_line" | grep -oE "[0-9]+x[0-9]+\+[0-9]+\+[0-9]+" | head -n1)" || true
+	if [ -n "$_geom" ]; then
+		printf "%s\n" "$_geom"
+		return 0
+	fi
+
+	_dim="$(xdpyinfo 2>/dev/null | awk '/dimensions/{print $2; exit}')" || true
+	if [ -n "$_dim" ]; then
+		printf "%s+0+0\n" "$_dim"
+		return 0
+	fi
+
+	printf "%s\n" "1024x600+0+0"
+}
+
+SCREEN_GEOM="$(kiosk_geom)"
+SCREEN_W="${SCREEN_GEOM%%x*}"
+_rest="${SCREEN_GEOM#*x}"
+SCREEN_H="${_rest%%+*}"
+_rest="${_rest#*+}"
+SCREEN_X="${_rest%%+*}"
+SCREEN_Y="${_rest#*+}"
+echo "geom=$SCREEN_GEOM (W=$SCREEN_W H=$SCREEN_H X=$SCREEN_X Y=$SCREEN_Y)"
+
+if [ $# -eq 0 ]; then
+	if [ -n "${KIOSK_CMD:-}" ]; then
+		echo "exec via KIOSK_CMD: $KIOSK_CMD"
+		# shellcheck disable=SC2086
+		sh -c "$KIOSK_CMD" &
+	else
+		SESSION_NAME="${KIOSK_SESSION:-kiosk}"
+		echo "default: st -e tmux new-session -A -s $SESSION_NAME"
+		st -e tmux new-session -A -s "$SESSION_NAME" &
+	fi
+else
+	echo "exec: $*"
+	"$@" &
+fi
+TERM_PID=$!
+echo "term_pid=$TERM_PID"
+kiosk_sleep 400000
+
+if ! kill -0 "$TERM_PID" 2>/dev/null; then
+	echo "FATAL: command exited immediately (pid=$TERM_PID)"
+	wait "$TERM_PID" || echo "term_status=$?"
+	sleep 3
+	exit 1
+fi
+
+if command -v xdotool >/dev/null 2>&1; then
+	WID=""
+	n=0
+	while [ "$n" -lt 15 ]; do
+		WID="$(xdotool search --pid "$TERM_PID" 2>/dev/null | tail -n1)" || true
+		[ -n "$WID" ] && break
+		# 部分程序会再 fork，尝试子进程窗口
+		for cpid in $(pgrep -P "$TERM_PID" 2>/dev/null); do
+			WID="$(xdotool search --pid "$cpid" 2>/dev/null | tail -n1)" || true
+			[ -n "$WID" ] && break
+		done
+		[ -n "$WID" ] && break
+		n=$((n + 1))
+		kiosk_sleep 200000
+	done
+	echo "wid=$WID"
+	if [ -n "$WID" ]; then
+		xdotool windowmove "$WID" "$SCREEN_X" "$SCREEN_Y" || true
+		xdotool windowsize "$WID" "$SCREEN_W" "$SCREEN_H" || true
+		xdotool windowfocus "$WID" || true
+		echo "maximized"
+	else
+		echo "WARN: no window for xdotool (pid=$TERM_PID)；GUI 若另起进程可忽略)"
+	fi
+else
+	echo "WARN: xdotool missing"
+fi
+
+wait "$TERM_PID"
+echo "term_ended status=$?"

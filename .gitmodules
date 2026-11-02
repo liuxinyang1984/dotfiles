@@ -22,3 +22,7 @@
 	path = vendor/picom
 	url = https://github.com/liuxinyang1984/picom.git
 	branch = master
+[submodule "vendor/fvwm"]
+	path = vendor/fvwm
+	url = https://github.com/liuxinyang1984/fvwm.git
+	branch = master
