@@ -1,29 +1,26 @@
 #!/bin/sh
-# 安装 kiosk 脚本 → ~/.local/bin
-#   ./install.sh           # 默认 symlink（改仓即生效）
-#   ./install.sh --copy    # 拷贝
-#   ./install.sh --dev     # 同默认（兼容旧用法）
+# 安装 kiosk-session / kiosk-xephyr.sh → ~/.local/bin
+#   ./install.sh           # 默认 symlink
+#   ./install.sh --copy
 # 父仓: ./install.sh desktop:kiosk（KIOSK_COPY=1 → --copy）
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BIN_DIR="${KIOSK_BIN:-$HOME/.local/bin}"
 MODE=link
+X11_COMMON_SRC="$(cd "$ROOT/.." && pwd)/session-common.sh"
+X11_COMMON_DEST="${XDG_CONFIG_HOME:-$HOME/.config}/x11/session-common.sh"
 
 usage() {
 	cat <<'EOF'
 用法: ./install.sh [--copy|--dev]
 
-  安装 kiosk-session.sh、kiosk-xephyr.sh → ~/.local/bin
-  （默认）  symlink 到本目录
+  安装 kiosk-session、kiosk-xephyr.sh → ~/.local/bin
+  （默认）  symlink
   --copy    拷贝
   --dev     同默认（兼容）
-  -h        帮助
 
-参数即启动命令（任意）:
-  kiosk-session.sh
-  kiosk-session.sh alacritty
-  kiosk-xephyr.sh foot
-  startx kiosk -- qutebrowser
+  kiosk-session [command...]
+  startx kiosk -- alacritty
 EOF
 }
 
@@ -55,10 +52,21 @@ link_or_copy() {
 	fi
 }
 
-for f in kiosk-session.sh kiosk-xephyr.sh; do
-	[ -f "$ROOT/$f" ] || { echo "缺少 $ROOT/$f" >&2; exit 1; }
-	link_or_copy "$ROOT/$f" "$BIN_DIR/$f"
-done
+[ -f "$ROOT/kiosk-session" ] || { echo "缺少 $ROOT/kiosk-session" >&2; exit 1; }
+[ -f "$ROOT/kiosk-xephyr.sh" ] || { echo "缺少 $ROOT/kiosk-xephyr.sh" >&2; exit 1; }
+chmod +x "$ROOT/kiosk-session" "$ROOT/kiosk-xephyr.sh"
+
+mkdir -p "$(dirname "$X11_COMMON_DEST")"
+if [ -f "$X11_COMMON_SRC" ]; then
+	ln -sfn "$X11_COMMON_SRC" "$X11_COMMON_DEST"
+	echo "symlink $X11_COMMON_DEST → $X11_COMMON_SRC"
+fi
+
+link_or_copy "$ROOT/kiosk-session" "$BIN_DIR/kiosk-session"
+link_or_copy "$ROOT/kiosk-xephyr.sh" "$BIN_DIR/kiosk-xephyr.sh"
+# 兼容旧名
+ln -sfn "$BIN_DIR/kiosk-session" "$BIN_DIR/kiosk-session.sh" 2>/dev/null || \
+	link_or_copy "$ROOT/kiosk-session" "$BIN_DIR/kiosk-session.sh"
 
 missing=""
 for c in xdotool; do
@@ -72,6 +80,5 @@ command -v Xephyr >/dev/null 2>&1 || \
 	echo "提示: 无 Xephyr 时无法用 kiosk-xephyr.sh" >&2
 
 echo "kiosk → $BIN_DIR（mode=$MODE）"
-echo "  kiosk-session.sh [command...]"
-echo "  kiosk-xephyr.sh  [command...]"
-echo "多启动: ./install.sh x11:multistart（desktop:kiosk 结束时也会询问）"
+echo "  kiosk-session [command...]"
+echo "  startx kiosk -- <cmd>"

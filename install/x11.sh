@@ -5,33 +5,43 @@
 #   ./install.sh x11:picom
 #
 # 环境变量:
-#   X11_DEFAULT_SESSION=kiosk|dwm|fvwm   写入 ~/.config/x11/default-session
-#   X11_MULTISTART=1|0                   desktop 安装时强制装/跳过多启动（非交互）
+#   X11_DEFAULT_SESSION=<名>   写入 default-session；运行时执行 <名>-session
+#   X11_MULTISTART=1|0         desktop 安装时强制装/跳过多启动（非交互）
 #
 # desktop 侧若只想复用函数：_X11_LIB_ONLY=1 . install/x11.sh
 
 X11_MARKER='# dotfiles-x11-session:1'
 X11_DEFAULT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/x11/default-session"
 X11_MULTISTART_DIR="$SCRIPT_DIR/config/x11/multistart"
-X11_SESSIONS='kiosk|dwm|fvwm'
+X11_COMMON_SRC="$SCRIPT_DIR/config/x11/session-common.sh"
+X11_COMMON_DEST="${XDG_CONFIG_HOME:-$HOME/.config}/x11/session-common.sh"
 
 x11_is_our_multistart() {
 	[ -e "$HOME/.xinitrc" ] || return 1
 	grep -q "^${X11_MARKER}$" "$HOME/.xinitrc" 2>/dev/null
 }
 
+x11_install_session_common() {
+	[ -f "$X11_COMMON_SRC" ] || return 0
+	mkdir -p "$(dirname "$X11_COMMON_DEST")"
+	ln -sfn "$X11_COMMON_SRC" "$X11_COMMON_DEST"
+	info "session-common → $X11_COMMON_DEST"
+}
+
 x11_set_default_session() {
 	_sess="$1"
-	case "$_sess" in
-	kiosk|dwm|fvwm) ;;
-	*)
-		error "默认会话无效: ${_sess}（${X11_SESSIONS}）"
+	# 任意简单名；不维护白名单（运行时查 <名>-session）
+	if [ -z "$_sess" ] || printf '%s' "$_sess" | grep -q '[^a-zA-Z0-9_-]'; then
+		error "默认会话名无效: ${_sess}（仅字母数字 _ -）"
 		return 1
-		;;
-	esac
+	fi
 	mkdir -p "$(dirname "$X11_DEFAULT_FILE")"
 	printf '%s\n' "$_sess" >"$X11_DEFAULT_FILE"
-	info "默认会话 → $X11_DEFAULT_FILE ($_sess)"
+	info "默认会话 → $X11_DEFAULT_FILE ($_sess → ${_sess}-session)"
+	if ! command -v "${_sess}-session" >/dev/null 2>&1 && \
+		[ ! -x "$HOME/.local/bin/${_sess}-session" ]; then
+		warn "尚未在 PATH 找到 ${_sess}-session（装完对应 desktop 即可）"
+	fi
 }
 
 x11_warn_startx_path() {
@@ -56,13 +66,14 @@ install_x11_multistart() {
 	mkdir -p "$HOME/.local/bin"
 	ln -sfn "$_startx" "$HOME/.local/bin/startx"
 	info "startx 包装 → $HOME/.local/bin/startx"
+	x11_install_session_common
 
 	if [ -n "${X11_DEFAULT_SESSION:-}" ]; then
 		x11_set_default_session "$X11_DEFAULT_SESSION" || exit 1
 	fi
 
 	x11_warn_startx_path
-	info "multistart 完成。startx | startx dwm | startx kiosk -- <cmd>"
+	info "multistart 完成。startx <名> → 执行 <名>-session（须已安装）"
 }
 
 install_x11_picom() {
@@ -81,16 +92,14 @@ install_x11_picom() {
 	info "picom 完成。dwm（multistart）会话会自动起；也可手动: picom --experimental-backends -b"
 }
 
-# desktop:* 装完后调用；$1 = kiosk|dwm|fvwm
+# desktop:* 装完后调用；$1 = 会话名（将对应 <名>-session）
 x11_offer_multistart_for_desktop() {
 	_want="$1"
-	case "$_want" in
-	kiosk|dwm|fvwm) ;;
-	*)
-		error "x11_offer_multistart_for_desktop: 无效会话 $_want"
+	if [ -z "$_want" ] || printf '%s' "$_want" | grep -q '[^a-zA-Z0-9_-]'; then
+		error "x11_offer_multistart_for_desktop: 无效会话名 $_want"
 		return 1
-		;;
-	esac
+	fi
+	x11_install_session_common
 
 	# 非交互覆盖
 	case "${X11_MULTISTART:-}" in

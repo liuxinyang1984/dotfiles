@@ -1,6 +1,6 @@
 #!/bin/sh
 # 在 Xephyr 嵌套 X11 里跑 kiosk（本机已有 Hyprland 等时用，勿 startx）
-# 参数原样传给 kiosk-session.sh（任意命令）
+# 参数原样传给 kiosk-session（任意命令）
 #
 # 用法:
 #   kiosk-xephyr.sh                         # 默认 session（st+tmux）
@@ -13,7 +13,7 @@
 #   KIOSK_XEPHYR_DISPLAY   默认 :2
 #   KIOSK_XEPHYR_SCREEN    默认 1280x800
 #   KIOSK_XEPHYR_EXTRA     额外 Xephyr 参数
-#   其余 KIOSK_* 传给 kiosk-session.sh
+#   其余 KIOSK_* 传给 kiosk-session
 
 set -e
 
@@ -29,14 +29,15 @@ if ! command -v Xephyr >/dev/null 2>&1; then
 fi
 
 SESSION_SH=""
-for c in "$ROOT/kiosk-session.sh" "$HOME/.local/bin/kiosk-session.sh"; do
+for c in "$ROOT/kiosk-session" "$HOME/.local/bin/kiosk-session" \
+	"$HOME/.local/bin/kiosk-session.sh"; do
 	if [ -x "$c" ]; then
 		SESSION_SH=$c
 		break
 	fi
 done
 if [ -z "$SESSION_SH" ]; then
-	echo "FATAL: kiosk-session.sh not found" >&2
+	echo "FATAL: kiosk-session not found" >&2
 	exit 1
 fi
 

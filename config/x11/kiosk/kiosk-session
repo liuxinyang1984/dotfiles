@@ -3,12 +3,12 @@
 # POSIX sh（#!/bin/sh；勿用 /usr/bin/bash）
 #
 # 用法（参数即要执行的命令，默认可被环境变量覆盖）:
-#   kiosk-session.sh                         # 默认见下
-#   kiosk-session.sh alacritty
-#   kiosk-session.sh foot
-#   kiosk-session.sh st -e nvim
-#   kiosk-session.sh qutebrowser
-#   startx kiosk -- alacritty                # 经 multistart xinitrc
+#   kiosk-session                            # 默认见下
+#   kiosk-session alacritty
+#   kiosk-session foot
+#   kiosk-session st -e nvim
+#   kiosk-session qutebrowser
+#   startx kiosk -- alacritty                # 经 multistart → kiosk-session
 #
 # 默认命令（无参数时）:
 #   KIOSK_CMD  — 若设置则用 shell -c 执行整串

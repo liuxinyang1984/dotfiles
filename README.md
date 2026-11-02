@@ -101,16 +101,16 @@ dwm 多启动会话会带 `--experimental-backends -b` 起 picom。
 ```bash
 ./install.sh x11:multistart
 ./install.sh x11:picom
-./install.sh desktop:kiosk
-./install.sh desktop:fvwm           # FVWM_FORCE=1 若已有 ~/.fvwm
-# X11_MULTISTART=1 X11_DEFAULT_SESSION=fvwm ./install.sh desktop:fvwm
+./install.sh desktop:kiosk          # → kiosk-session
+./install.sh desktop:fvwm           # → fvwm-session；FVWM_FORCE=1 若已有 ~/.fvwm
+./install.sh desktop:suckless       # → dwm-session
 
+startx dwm
 startx fvwm
 startx kiosk -- alacritty
-kiosk-xephyr.sh st -e nvim
 ```
 
-默认会话：`~/.config/x11/default-session`（`kiosk`|`dwm`|`fvwm`）。壁纸：`~/Pictures/wallpapers/`。
+`startx <名>` 执行 `<名>-session`（无白名单）。默认会话：`~/.config/x11/default-session`。壁纸：`~/Pictures/wallpapers/`。
 
 ## keyd
 

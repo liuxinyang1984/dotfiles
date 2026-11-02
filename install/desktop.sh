@@ -23,6 +23,17 @@ install_suckless() {
     # fontconfig 仍属本仓，不在 suckless 子仓里
     # shellcheck source=install/fontconfig.sh
     . "$SCRIPT_DIR/install/fontconfig.sh"
+
+    # dwm 会话脚本（startx dwm → dwm-session）
+    _dwm_sess="$SCRIPT_DIR/config/x11/dwm/install.sh"
+    if [ -f "$_dwm_sess" ]; then
+        info "安装 dwm-session"
+        set --
+        [ "${DWM_SESSION_COPY:-}" = "1" ] && set -- "$@" --copy
+        sh "$_dwm_sess" "$@"
+    else
+        warn "缺少 config/x11/dwm/install.sh"
+    fi
     info "suckless 完成"
 
     _X11_LIB_ONLY=1

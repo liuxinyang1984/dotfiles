@@ -1,0 +1,40 @@
+#!/bin/sh
+# dwm 会话（已有 DISPLAY）。安装名: ~/.local/bin/dwm-session
+#   dwm-session
+#   startx dwm
+#   startx ~/.local/bin/dwm-session
+
+_common="${XDG_CONFIG_HOME:-$HOME/.config}/x11/session-common.sh"
+if [ -f "$_common" ]; then
+	# shellcheck source=/dev/null
+	. "$_common"
+else
+	export PATH="${HOME}/.local/bin:/usr/local/bin:${PATH}"
+	export GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx SDL_IM_MODULE=fcitx
+fi
+unset _common
+
+command -v dwmblocks >/dev/null 2>&1 && dwmblocks &
+
+if command -v feh >/dev/null 2>&1; then
+	mkdir -p "$HOME/Pictures/wallpapers"
+	if ls "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1; then
+		feh --bg-fill --randomize "$HOME/Pictures/wallpapers/"* &
+	fi
+fi
+
+PICOM_BIN=""
+if [ "${SKIP_PICOM:-0}" != 1 ]; then
+	for c in "$HOME/.local/bin/picom" /usr/local/bin/picom; do
+		[ -x "$c" ] && PICOM_BIN=$c && break
+	done
+fi
+
+DWM_BIN=""
+for c in "$HOME/.local/bin/dwm" /usr/local/bin/dwm; do
+	[ -x "$c" ] && DWM_BIN=$c && break
+done
+[ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
+
+# dunst / clipmenud / fcitx5 / picom 须在同一 dbus-run-session；sh 不能写 `cmd &;`
+exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
