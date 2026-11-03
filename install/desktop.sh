@@ -123,7 +123,7 @@ install_fvwm() {
     # shellcheck disable=SC2086
     [ -n "${INSTALL_ARGS:-}" ] && set -- "$@" $INSTALL_ARGS
     sh "$inst" "$@"
-    info "fvwm 完成。startx fvwm；依赖: fvwm3 rofi"
+    info "fvwm 完成。startx fvwm；依赖: fvwm3|fvwm + rofi"
 
     _X11_LIB_ONLY=1
     # shellcheck source=install/x11.sh
