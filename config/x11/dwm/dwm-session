@@ -14,8 +14,6 @@ else
 fi
 unset _common
 
-command -v dwmblocks >/dev/null 2>&1 && dwmblocks &
-
 if command -v feh >/dev/null 2>&1; then
 	mkdir -p "$HOME/Pictures/wallpapers"
 	if ls "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1; then
@@ -36,5 +34,6 @@ for c in "$HOME/.local/bin/dwm" /usr/local/bin/dwm; do
 done
 [ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
 
-# dunst / clipmenud / fcitx5 / picom 须在同一 dbus-run-session；sh 不能写 `cmd &;`
-exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+# dwmblocks / fcitx5 / dunst / clipmenud / picom 须在同一 dbus-run-session
+# （blocks 在 session 外起则无 DBUS，sb-fcitx 的 fcitx5-remote 恒失败→永远「英」）
+exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
