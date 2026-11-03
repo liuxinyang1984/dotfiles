@@ -23,7 +23,8 @@ KIOSK_LOG="${KIOSK_LOG:-$HOME/kiosk-session.log}"
 exec >>"$KIOSK_LOG" 2>&1
 echo "===== $(date) DISPLAY=${DISPLAY:-} cmd: $* ====="
 
-export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH:-}"
+# ~/.local/bin 优先，避免系统旧 st/startx 盖住用户安装
+export PATH="${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 kiosk_sleep() {
 	if command -v usleep >/dev/null 2>&1; then

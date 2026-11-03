@@ -20,7 +20,8 @@
 X11_DEFAULT_SESSION=dwm ./install.sh x11:multistart
 ```
 
-落地：`~/.xinitrc`、`~/.local/bin/startx`、`~/.config/x11/session-common.sh`。
+落地：`~/.xinitrc`、`~/.local/bin/startx`、`~/.config/x11/session-common.sh`，
+并在 `~/.profile` / `~/.zprofile` 写入 PATH（`# dotfiles-x11-local-bin:1`）。
 
 识别标记：`# dotfiles-x11-session:1`。
 

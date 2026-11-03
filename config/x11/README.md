@@ -33,4 +33,6 @@ multistart **不**内嵌会话逻辑；只判断 `${1}-session` 是否在 PATH�
 
 默认会话：`~/.config/x11/default-session`（一行会话名，对应 `<名>-session`）。
 
-`~/.local/bin` 须排在 `/usr/bin` 前，包装 `startx` 才生效。
+`x11:multistart` / `desktop:*` 装多启动时会往 `~/.profile` 与 `~/.zprofile` 写入
+`# dotfiles-x11-local-bin:1`，保证登录 PATH 里 `~/.local/bin` 优先于 `/usr/bin`
+（否则系统 `startx` 会盖住包装，`startx kiosk` 无效）。
