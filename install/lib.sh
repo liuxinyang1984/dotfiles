@@ -229,7 +229,9 @@ run_vendor_install() {
         error "$relpath 缺少 install.sh（请在子仓根目录提供可单独执行的安装脚本）"
         exit 1
     fi
-    info "调用 $relpath/install.sh"
-    sh "$inst"
+    info "调用 $relpath/install.sh${INSTALL_ARGS:+ ← $INSTALL_ARGS}"
+    # INSTALL_ARGS：父仓挂到本模块的额外参数（空格分隔的简单 token）
+    # shellcheck disable=SC2086
+    sh "$inst" ${INSTALL_ARGS:-}
 }
 

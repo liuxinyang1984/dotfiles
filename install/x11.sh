@@ -84,10 +84,12 @@ install_x11_picom() {
 		error "vendor/picom 缺少 install.sh"
 		exit 1
 	fi
-	info "调用 vendor/picom/install.sh"
+	info "调用 vendor/picom/install.sh${INSTALL_ARGS:+ ← $INSTALL_ARGS}"
 	set --
 	[ "${PICOM_USER:-}" = "1" ] && set -- "$@" --user
 	[ "${PICOM_NO_CONFIG:-}" = "1" ] || set -- "$@" --config
+	# shellcheck disable=SC2086
+	[ -n "${INSTALL_ARGS:-}" ] && set -- "$@" $INSTALL_ARGS
 	sh "$inst" "$@"
 	info "picom 完成。dwm（multistart）会话会自动起；也可手动: picom --experimental-backends -b"
 }

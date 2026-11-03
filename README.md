@@ -103,7 +103,8 @@ dwm 多启动会话会带 `--experimental-backends -b` 起 picom。
 ./install.sh x11:picom
 ./install.sh desktop:kiosk          # → kiosk-session
 ./install.sh desktop:fvwm           # → fvwm-session；FVWM_FORCE=1 若已有 ~/.fvwm
-./install.sh desktop:suckless       # → dwm-session
+./install.sh desktop:suckless       # 全部 suckless 组件 + dwm-session
+./install.sh desktop:suckless dwm   # 只编装 dwm（可再跟 st dmenu …）
 
 startx dwm
 startx fvwm

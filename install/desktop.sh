@@ -11,36 +11,60 @@ install_suckless() {
         error "vendor/suckless 缺少 install.sh"
         exit 1
     fi
-    info "调用 vendor/suckless/install.sh"
+    info "调用 vendor/suckless/install.sh${INSTALL_ARGS:+ ← $INSTALL_ARGS}"
     set --
     [ "${SUCKLESS_USER:-}" = "1" ] && set -- "$@" --user
     [ "${INSTALL_POLKIT:-}" = "1" ] && set -- "$@" --polkit
-    # 例: SUCKLESS_COMPONENTS="dwm st" ./install.sh desktop:suckless
+    # CLI：./install.sh desktop:suckless dwm st
+    # 兼容：SUCKLESS_COMPONENTS="dwm st" ./install.sh desktop:suckless
     # shellcheck disable=SC2086
-    [ -n "${SUCKLESS_COMPONENTS:-}" ] && set -- "$@" $SUCKLESS_COMPONENTS
+    if [ -n "${INSTALL_ARGS:-}" ]; then
+        set -- "$@" $INSTALL_ARGS
+    elif [ -n "${SUCKLESS_COMPONENTS:-}" ]; then
+        set -- "$@" $SUCKLESS_COMPONENTS
+    fi
     sh "$inst" "$@"
 
     # fontconfig 仍属本仓，不在 suckless 子仓里
     # shellcheck source=install/fontconfig.sh
     . "$SCRIPT_DIR/install/fontconfig.sh"
 
-    # dwm 会话脚本（startx dwm → dwm-session）
-    _dwm_sess="$SCRIPT_DIR/config/x11/dwm/install.sh"
-    if [ -f "$_dwm_sess" ]; then
-        info "安装 dwm-session"
-        set --
-        [ "${DWM_SESSION_COPY:-}" = "1" ] && set -- "$@" --copy
-        sh "$_dwm_sess" "$@"
-    else
-        warn "缺少 config/x11/dwm/install.sh"
+    # 显式点了组件名且不含 dwm → 跳过 dwm-session；仅 --user 等选项仍装
+    _want_dwm=1
+    _has_comp=0
+    for _t in ${INSTALL_ARGS:-} ${SUCKLESS_COMPONENTS:-}; do
+        case "$_t" in
+            dwm|st|dmenu|dwmblocks|tabbed|surf|mini-polkit) _has_comp=1 ;;
+        esac
+    done
+    if [ "$_has_comp" = 1 ]; then
+        _want_dwm=0
+        case " ${INSTALL_ARGS:-} ${SUCKLESS_COMPONENTS:-} " in
+            *" dwm "*) _want_dwm=1 ;;
+        esac
+    fi
+
+    if [ "$_want_dwm" = 1 ]; then
+        _dwm_sess="$SCRIPT_DIR/config/x11/dwm/install.sh"
+        if [ -f "$_dwm_sess" ]; then
+            info "安装 dwm-session"
+            set --
+            [ "${DWM_SESSION_COPY:-}" = "1" ] && set -- "$@" --copy
+            sh "$_dwm_sess" "$@"
+        else
+            warn "缺少 config/x11/dwm/install.sh"
+        fi
     fi
     info "suckless 完成"
 
-    _X11_LIB_ONLY=1
-    # shellcheck source=install/x11.sh
-    . "$SCRIPT_DIR/install/x11.sh"
-    x11_offer_multistart_for_desktop dwm
-    unset _X11_LIB_ONLY
+    if [ "$_want_dwm" = 1 ]; then
+        _X11_LIB_ONLY=1
+        # shellcheck source=install/x11.sh
+        . "$SCRIPT_DIR/install/x11.sh"
+        x11_offer_multistart_for_desktop dwm
+        unset _X11_LIB_ONLY
+    fi
+    unset _want_dwm _has_comp _t
 }
 
 install_hyprland() {
@@ -67,11 +91,13 @@ install_kiosk() {
         error "缺少 config/x11/kiosk/install.sh"
         exit 1
     fi
-    info "调用 config/x11/kiosk/install.sh"
+    info "调用 config/x11/kiosk/install.sh${INSTALL_ARGS:+ ← $INSTALL_ARGS}"
     set --
     [ "${KIOSK_COPY:-}" = "1" ] && set -- "$@" --copy
     # 兼容旧环境变量（默认已是 symlink）
     [ "${KIOSK_DEV:-}" = "1" ] && set -- "$@" --dev
+    # shellcheck disable=SC2086
+    [ -n "${INSTALL_ARGS:-}" ] && set -- "$@" $INSTALL_ARGS
     sh "$inst" "$@"
     info "kiosk 脚本完成。真机: startx kiosk -- <cmd>；本机测: kiosk-xephyr.sh"
 
@@ -90,10 +116,12 @@ install_fvwm() {
         error "vendor/fvwm 缺少 install.sh"
         exit 1
     fi
-    info "调用 vendor/fvwm/install.sh"
+    info "调用 vendor/fvwm/install.sh${INSTALL_ARGS:+ ← $INSTALL_ARGS}"
     set --
     [ "${FVWM_COPY:-}" = "1" ] && set -- "$@" --copy
     [ "${FVWM_FORCE:-}" = "1" ] && set -- "$@" --force
+    # shellcheck disable=SC2086
+    [ -n "${INSTALL_ARGS:-}" ] && set -- "$@" $INSTALL_ARGS
     sh "$inst" "$@"
     info "fvwm 完成。startx fvwm；依赖: fvwm3 rofi"
 
