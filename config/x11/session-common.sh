@@ -14,3 +14,11 @@ export GTK_IM_MODULE="${GTK_IM_MODULE:-fcitx}"
 export QT_IM_MODULE="${QT_IM_MODULE:-fcitx}"
 export XMODIFIERS="${XMODIFIERS:-@im=fcitx}"
 export SDL_IM_MODULE="${SDL_IM_MODULE:-fcitx}"
+
+# 本机私货（显示器布局等），不进仓
+_x11_local="${XDG_CONFIG_HOME:-$HOME/.config}/x11/local.sh"
+if [ -f "$_x11_local" ]; then
+	# shellcheck source=/dev/null
+	. "$_x11_local"
+fi
+unset _x11_local
