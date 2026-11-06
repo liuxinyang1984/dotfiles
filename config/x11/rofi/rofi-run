@@ -1,0 +1,28 @@
+#!/bin/sh
+# rofi-run — 类 dmenu：从 PATH 跑命令（rofi -show run）
+# dwm: Super+r；主题同 x11:rofi → ~/.config/rofi/cde.rasi
+set -e
+THEME="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/cde.rasi"
+
+if ! command -v rofi >/dev/null 2>&1; then
+	command -v notify-send >/dev/null 2>&1 \
+		&& notify-send -u critical 'rofi' '未安装 rofi（pacman -S rofi）'
+	exit 1
+fi
+
+if [ ! -f "$THEME" ]; then
+	command -v notify-send >/dev/null 2>&1 \
+		&& notify-send -u critical 'rofi' "缺少主题 $THEME（./install.sh x11:rofi）"
+	exit 1
+fi
+
+if [ -f /tmp/rofi-run.pid ] && kill -0 "$(cat /tmp/rofi-run.pid)" 2>/dev/null; then
+	kill "$(cat /tmp/rofi-run.pid)" 2>/dev/null || true
+	exit 0
+fi
+
+exec rofi -normal-window -steal-focus \
+	-pid /tmp/rofi-run.pid \
+	-show run \
+	-theme "$THEME" \
+	"$@"

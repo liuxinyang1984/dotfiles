@@ -1,0 +1,31 @@
+#!/bin/sh
+# rofi-drun — X11 应用启动（读 .desktop）；主题由 x11:rofi 装到 ~/.config/rofi/
+# dwm: Super+Space；fvwm 亦可直接调此脚本
+set -e
+THEME="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/cde.rasi"
+ICON_THEME="${ROFI_ICON_THEME:-Flat-Remix-Green-Light}"
+
+if ! command -v rofi >/dev/null 2>&1; then
+	command -v notify-send >/dev/null 2>&1 \
+		&& notify-send -u critical 'rofi' '未安装 rofi（pacman -S rofi）'
+	exit 1
+fi
+
+if [ ! -f "$THEME" ]; then
+	command -v notify-send >/dev/null 2>&1 \
+		&& notify-send -u critical 'rofi' "缺少主题 $THEME（./install.sh x11:rofi）"
+	exit 1
+fi
+
+# 再按一次关掉已开的 rofi（与 dmenu-clip 开关习惯一致）
+if [ -f /tmp/rofi-drun.pid ] && kill -0 "$(cat /tmp/rofi-drun.pid)" 2>/dev/null; then
+	kill "$(cat /tmp/rofi-drun.pid)" 2>/dev/null || true
+	exit 0
+fi
+
+exec rofi -normal-window -steal-focus \
+	-pid /tmp/rofi-drun.pid \
+	-show drun -show-icons \
+	-icon-theme "$ICON_THEME" \
+	-theme "$THEME" \
+	"$@"

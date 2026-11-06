@@ -9,6 +9,7 @@
 | [`kiosk/`](kiosk/) | `kiosk-session` |
 | [`dwm/`](dwm/) | `dwm-session` |
 | [`picom/`](picom/) | `./install.sh x11:picom` → `vendor/picom` |
+| [`rofi/`](rofi/) | `./install.sh x11:rofi` → CDE 主题 + `rofi-drun` |
 | fvwm | `vendor/fvwm` → `fvwm-session` |
 
 ## 模型
@@ -26,6 +27,7 @@ multistart **不**内嵌会话逻辑；只判断 `${1}-session` 是否在 PATH�
 ```bash
 ./install.sh x11:multistart
 ./install.sh x11:picom
+./install.sh x11:rofi
 ./install.sh desktop:kiosk
 ./install.sh desktop:fvwm
 ./install.sh desktop:suckless    # 含 dwm-session

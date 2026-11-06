@@ -1,0 +1,148 @@
+/* CDE-style rofi — dialog gray + teal selection
+ * Outer Motif frame from fvwm (-normal-window).
+ * kb-* lives here: FVWM Exec eats commas in -kb-row-* CLI args.
+ */
+configuration {
+    /* Ctrl+j/k 默认占着 accept / delete-to-eol，不先腾出会绑定失败 */
+    kb-accept-entry: "Control+m,Return,KP_Enter";
+    kb-remove-to-eol: "";
+    kb-row-up: "Up,Control+k,Control+p";
+    kb-row-down: "Down,Control+j,Control+n";
+}
+
+* {
+    font: "Maple Mono NL NF 14";
+    background:                  #b8b4a8;
+    foreground:                  #000000;
+    selected-normal-background:  #007070;
+    selected-normal-foreground:  #ffffff;
+    selected-active-background:  #007070;
+    selected-active-foreground:  #ffffff;
+    selected-urgent-background:  #007070;
+    selected-urgent-foreground:  #ffffff;
+    normal-background:           #b8b4a8;
+    normal-foreground:           #000000;
+    alternate-normal-background: #b8b4a8;
+    alternate-normal-foreground: #000000;
+    active-background:           #b8b4a8;
+    active-foreground:           #004040;
+    urgent-background:           #b8b4a8;
+    urgent-foreground:           #800000;
+    alternate-active-background: #b8b4a8;
+    alternate-active-foreground: #004040;
+    alternate-urgent-background: #b8b4a8;
+    alternate-urgent-foreground: #800000;
+    separatorcolor:              #6e6a60;
+    border-color:                #6e6a60;
+    spacing:                     2;
+    background-color:            transparent;
+}
+
+window {
+    background-color: @background;
+    border:           0;
+    border-radius:    0;
+    padding:          4px;
+    width:            480px;
+    location:         center;
+    anchor:           center;
+}
+
+mainbox {
+    background-color: @background;
+    border:  0;
+    padding: 0;
+    spacing: 4px;
+}
+
+inputbar {
+    background-color: #a8a498;
+    text-color:       @foreground;
+    border:           1px;
+    border-color:     @border-color;
+    border-radius:    0;
+    padding:          4px 6px;
+    spacing:          6px;
+    children:         [ prompt, entry ];
+}
+
+prompt {
+    background-color: transparent;
+    text-color:       @foreground;
+    padding:          0px 4px 0px 0px;
+}
+
+entry {
+    background-color: transparent;
+    text-color:       @foreground;
+}
+
+listview {
+    background-color: @background;
+    border:           1px;
+    border-color:     @border-color;
+    border-radius:    0;
+    padding:          2px;
+    spacing:          0;
+    lines:            6;
+    columns:          1;
+    fixed-height:     true;
+    scrollbar:        false;
+}
+
+element {
+    background-color: transparent;
+    text-color:       @foreground;
+    border:           0;
+    border-radius:    0;
+    padding:          3px 4px;
+    spacing:          6px;
+    children:         [ element-icon, element-text ];
+}
+
+element-icon {
+    size:             1.2em;
+    background-color: transparent;
+}
+
+element-text {
+    background-color: inherit;
+    text-color:       inherit;
+}
+
+element normal.normal {
+    background-color: @normal-background;
+    text-color:       @normal-foreground;
+}
+element normal.urgent {
+    background-color: @urgent-background;
+    text-color:       @urgent-foreground;
+}
+element normal.active {
+    background-color: @active-background;
+    text-color:       @active-foreground;
+}
+element selected.normal {
+    background-color: @selected-normal-background;
+    text-color:       @selected-normal-foreground;
+}
+element selected.urgent {
+    background-color: @selected-urgent-background;
+    text-color:       @selected-urgent-foreground;
+}
+element selected.active {
+    background-color: @selected-active-background;
+    text-color:       @selected-active-foreground;
+}
+element alternate.normal {
+    background-color: @alternate-normal-background;
+    text-color:       @alternate-normal-foreground;
+}
+element alternate.urgent {
+    background-color: @alternate-urgent-background;
+    text-color:       @alternate-urgent-foreground;
+}
+element alternate.active {
+    background-color: @alternate-active-background;
+    text-color:       @alternate-active-foreground;
+}

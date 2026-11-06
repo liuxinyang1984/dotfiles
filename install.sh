@@ -12,7 +12,7 @@ is_known_module() {
     case "$1" in
         shell|zsh|tmux|nvim|vim|fontconfig|fcitx5-chinese|keyd|dunst) return 0 ;;
         desktop:suckless|desktop:hyprland|desktop:kiosk|desktop:fvwm|desktop:picom) return 0 ;;
-        x11:multistart|x11:picom) return 0 ;;
+        x11:multistart|x11:picom|x11:rofi) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -38,6 +38,7 @@ usage() {
   desktop:fvwm          vendor/fvwm → ~/.fvwm（可跟 --copy / --force）
   x11:multistart        多启动：~/.xinitrc + ~/.local/bin/startx
   x11:picom             调用 vendor/picom/install.sh（可跟 --user 等）
+  x11:rofi              CDE 主题 + rofi-drun（.desktop 启动器）
 
 示例:
   $0 shell zsh tmux nvim
@@ -49,6 +50,7 @@ usage() {
   $0 desktop:kiosk --copy
   $0 x11:multistart
   $0 x11:picom
+  $0 x11:rofi
 EOF
 }
 
@@ -76,7 +78,7 @@ run_one_module() {
             ;;
         x11)
             if [ -z "$sub" ]; then
-                error "请指定 x11:multistart 或 x11:picom"
+                error "请指定 x11:multistart、x11:picom 或 x11:rofi"
                 exit 1
             fi
             ;;
