@@ -11,7 +11,7 @@ configuration {
 }
 
 * {
-    font: "Maple Mono NL NF 14";
+    font: "Maple Mono NL NF 12";
     background:                  #b8b4a8;
     foreground:                  #000000;
     selected-normal-background:  #007070;
