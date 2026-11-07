@@ -10,6 +10,7 @@
 | [`dwm/`](dwm/) | `dwm-session` |
 | [`picom/`](picom/) | `./install.sh x11:picom` → `vendor/picom` |
 | [`rofi/`](rofi/) | `./install.sh x11:rofi` → CDE 主题 + `rofi-drun` |
+| [`ly/`](ly/) | `./install.sh x11:ly` → Ly DM + Terminus；会话 `.desktop` 由各 desktop 写入 xsessions |
 | fvwm | `vendor/fvwm` → `fvwm-session` |
 
 ## 模型
@@ -28,9 +29,10 @@ multistart **不**内嵌会话逻辑；只判断 `${1}-session` 是否在 PATH�
 ./install.sh x11:multistart
 ./install.sh x11:picom
 ./install.sh x11:rofi
-./install.sh desktop:kiosk
-./install.sh desktop:fvwm
-./install.sh desktop:suckless    # 含 dwm-session
+./install.sh x11:ly              # Ly + ter-132b；tmux → custom-sessions
+./install.sh desktop:kiosk       # 含 kiosk.desktop → xsessions
+./install.sh desktop:fvwm        # 含 fvwm-session.desktop → xsessions
+./install.sh desktop:suckless    # 含 dwm-session + dwm.desktop → xsessions
 ```
 
 默认会话：`~/.config/x11/default-session`（一行会话名，对应 `<名>-session`）。

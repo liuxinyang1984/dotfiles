@@ -1,6 +1,6 @@
 # dwm-session
 
-`desktop:suckless` 会安装 `~/.local/bin/dwm-session`。
+`desktop:suckless` 会安装 `~/.local/bin/dwm-session`，并把 `dwm.desktop` 写入 `/usr/share/xsessions/`（供 Ly 等 DM；`LY_SKIP_XSESSION=1` 可跳过）。
 
 ```bash
 dwm-session

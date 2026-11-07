@@ -4,6 +4,7 @@
 #   ./install.sh x11:multistart
 #   ./install.sh x11:picom
 #   ./install.sh x11:rofi
+#   ./install.sh x11:ly
 #
 # 环境变量:
 #   X11_DEFAULT_SESSION=<名>   写入 default-session；运行时执行 <名>-session
@@ -210,6 +211,18 @@ install_x11_rofi() {
 	"$_sh"
 }
 
+install_x11_ly() {
+	_sh="$SCRIPT_DIR/config/x11/ly/install.sh"
+	[ -f "$_sh" ] || {
+		error "缺少 $_sh"
+		return 1
+	}
+	chmod +x "$_sh"
+	info "安装 x11:ly…"
+	# shellcheck disable=SC2086
+	"$_sh" ${INSTALL_ARGS:-}
+}
+
 x11_dispatch() {
 	case "${INSTALL_SUB:-}" in
 	multistart)
@@ -221,12 +234,15 @@ x11_dispatch() {
 	rofi)
 		install_x11_rofi
 		;;
+	ly)
+		install_x11_ly
+		;;
 	"")
-		error "请指定 x11:multistart、x11:picom 或 x11:rofi"
+		error "请指定 x11:multistart、x11:picom、x11:rofi 或 x11:ly"
 		exit 1
 		;;
 	*)
-		error "未知 x11 子模块: ${INSTALL_SUB}（用 x11:multistart / x11:picom / x11:rofi）"
+		error "未知 x11 子模块: ${INSTALL_SUB}（用 x11:multistart / x11:picom / x11:rofi / x11:ly）"
 		exit 1
 		;;
 	esac

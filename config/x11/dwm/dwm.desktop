@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=dwm
+Comment=dwm (dotfiles dwm-session)
+Exec=@HOME@/.local/bin/dwm-session
+TryExec=@HOME@/.local/bin/dwm-session
+DesktopNames=dwm
+Type=Application

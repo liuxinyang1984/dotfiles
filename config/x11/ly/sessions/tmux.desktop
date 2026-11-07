@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=tmux
+Comment=tmux on TTY (Ly custom)
+Exec=/usr/bin/tmux new-session -A -s main
+Terminal=true
+Type=Application

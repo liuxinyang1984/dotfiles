@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=kiosk
+Comment=kiosk-session (no WM; default st+tmux)
+Exec=@HOME@/.local/bin/kiosk-session
+TryExec=@HOME@/.local/bin/kiosk-session
+DesktopNames=kiosk
+Type=Application

@@ -82,3 +82,10 @@ command -v Xephyr >/dev/null 2>&1 || \
 echo "kiosk → $BIN_DIR（mode=$MODE）"
 echo "  kiosk-session [command...]"
 echo "  startx kiosk -- <cmd>"
+
+_ly_xsess="$(cd "$ROOT/.." && pwd)/ly/install-xsession.sh"
+if [ -f "$ROOT/kiosk.desktop" ] && [ -f "$_ly_xsess" ]; then
+	chmod +x "$_ly_xsess"
+	sh "$_ly_xsess" "$ROOT/kiosk.desktop" || echo "警告: xsessions 未写入（无 root 或已跳过）" >&2
+fi
+unset _ly_xsess
