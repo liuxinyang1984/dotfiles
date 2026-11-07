@@ -30,9 +30,11 @@ Linux **文本控制台只有 16 色**。Ly 的 `0xSSRRGGBB` 真彩会并到最�
 
 本模块用 [`startup.sh`](startup.sh) 在 Ly 起来前重写 VT 调色板：把暗黄/亮黄/绿槽改成棕金（matrix 雨滴在 TTY 上常走绿色）。这才是 TTY 上真正能看见的颜色。
 
-默认样式（`crt-amber.colors`）：`animation = none`，`bigclock = en`，居中；实心登录框；`lang = unix`；info 行 `AT&T UNIX System V`（替换默认 hostname）。
+默认样式（`crt-amber.colors`）：`animation = none`，`bigclock = en`，居中；实心登录框；`lang = unix`；**`box_title = AT&T UNIX System V`**（框顶标题，避免 info 行自带的 `<…>`）。
 
-说明：TTY 上 `blank_box` 开/关差别往往很小（黑底 + 16 色），几乎看不出来是正常的。
+说明：
+- info 行是可切换标签，Ly 会画 `<` `>`；只要文案放 info 就会带括号。
+- 真 TTY 光标只有下划线/块状，没有编辑器那种竖线；`startup.sh` 里设为全块光标（`\\033[?6c`）。
 
 ```bash
 ./config/x11/ly/install.sh --no-packages --no-enable

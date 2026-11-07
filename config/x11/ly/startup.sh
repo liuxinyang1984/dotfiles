@@ -46,5 +46,7 @@ if [ "${TERM:-}" = "linux" ] || [ -n "$_tty" ]; then
 		printf '\033]P%x%s' "$i" "$(echo $COLORS | cut -d ' ' -f$((i + 1)))"
 		i=$((i + 1))
 	done
+	# 光标：Linux 文本 VT 只有下划线/半块/全块，没有 I-beam 竖线；6=全块（最接近）
+	printf '\033[?6c'
 	clear
 fi
