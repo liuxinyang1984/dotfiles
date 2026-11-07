@@ -1,8 +1,9 @@
 #!/bin/sh
 # rofi-run — 类 dmenu：从 PATH 跑命令（rofi -show run）
-# dwm: Super+r；主题同 x11:rofi → ~/.config/rofi/cde.rasi
+# 主题策略同 rofi-drun（默认 cde-dwm.rasi + -normal-window）
 set -e
-THEME="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/cde.rasi"
+ROFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+THEME="${ROFI_THEME:-$ROFI_CONF/cde-dwm.rasi}"
 
 if ! command -v rofi >/dev/null 2>&1; then
 	command -v notify-send >/dev/null 2>&1 \

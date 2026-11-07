@@ -1,0 +1,11 @@
+/* 剪切板：无图标列；其它与 cde-dwm / cde 一致 */
+@import "cde-dwm.rasi"
+
+element {
+    children: [ element-text ];
+    spacing:  0;
+}
+
+element-icon {
+    size: 0;
+}

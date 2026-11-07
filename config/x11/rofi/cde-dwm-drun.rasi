@@ -1,0 +1,2 @@
+/* dwm + .desktop：有图标；外框同 cde-dwm（-normal-window）。 */
+@import "cde.rasi"

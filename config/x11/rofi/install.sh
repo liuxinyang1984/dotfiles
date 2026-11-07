@@ -13,7 +13,7 @@ usage() {
 	cat <<'EOF'
 用法: ./install.sh [--copy]
 
-  安装 cde.rasi → ~/.config/rofi/
+  安装 cde.rasi / cde-dwm.rasi / cde-dwm-drun.rasi / cde-clip.rasi → ~/.config/rofi/
   安装 rofi-drun → ~/.local/bin（.desktop 启动；dwm Super+Space）
   安装 rofi-run  → ~/.local/bin（PATH 命令；dwm Super+r）
 EOF
@@ -28,6 +28,9 @@ for arg in "$@"; do
 done
 
 [ -f "$ROOT/cde.rasi" ] || { echo "缺少 $ROOT/cde.rasi" >&2; exit 1; }
+[ -f "$ROOT/cde-dwm.rasi" ] || { echo "缺少 $ROOT/cde-dwm.rasi" >&2; exit 1; }
+[ -f "$ROOT/cde-dwm-drun.rasi" ] || { echo "缺少 $ROOT/cde-dwm-drun.rasi" >&2; exit 1; }
+[ -f "$ROOT/cde-clip.rasi" ] || { echo "缺少 $ROOT/cde-clip.rasi" >&2; exit 1; }
 [ -f "$ROOT/rofi-drun" ] || { echo "缺少 $ROOT/rofi-drun" >&2; exit 1; }
 [ -f "$ROOT/rofi-run" ] || { echo "缺少 $ROOT/rofi-run" >&2; exit 1; }
 chmod +x "$ROOT/rofi-drun" "$ROOT/rofi-run"
@@ -52,6 +55,9 @@ link_or_copy() {
 
 mkdir -p "$ROFI_CONF" "$BIN_DIR"
 link_or_copy "$ROOT/cde.rasi" "$ROFI_CONF/cde.rasi"
+link_or_copy "$ROOT/cde-dwm.rasi" "$ROFI_CONF/cde-dwm.rasi"
+link_or_copy "$ROOT/cde-dwm-drun.rasi" "$ROFI_CONF/cde-dwm-drun.rasi"
+link_or_copy "$ROOT/cde-clip.rasi" "$ROFI_CONF/cde-clip.rasi"
 link_or_copy "$ROOT/rofi-drun" "$BIN_DIR/rofi-drun"
 link_or_copy "$ROOT/rofi-run" "$BIN_DIR/rofi-run"
 

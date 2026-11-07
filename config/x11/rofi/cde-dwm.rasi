@@ -1,0 +1,14 @@
+/* dwm：外框交 -normal-window + CDE 装饰；主题内细线/分隔/内边距与 cde.rasi 相同。
+ * 无图标列（run / 多数 PATH 命令无图标）。drun 用 cde-dwm-drun.rasi。
+ * fvwm 直接用 cde.rasi。
+ */
+@import "cde.rasi"
+
+element {
+    children: [ element-text ];
+    spacing:  0;
+}
+
+element-icon {
+    size: 0;
+}

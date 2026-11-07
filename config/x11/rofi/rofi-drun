@@ -1,8 +1,10 @@
 #!/bin/sh
-# rofi-drun — X11 应用启动（读 .desktop）；主题由 x11:rofi 装到 ~/.config/rofi/
-# dwm: Super+Space；fvwm 亦可直接调此脚本
+# rofi-drun — X11 应用启动（读 .desktop）
+# dwm 默认：cde-dwm-drun.rasi（有图标）+ -normal-window
+# run 用无图标的 cde-dwm.rasi；fvwm：ROFI_THEME=…/cde.rasi
 set -e
-THEME="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/cde.rasi"
+ROFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+THEME="${ROFI_THEME:-$ROFI_CONF/cde-dwm-drun.rasi}"
 ICON_THEME="${ROFI_ICON_THEME:-Flat-Remix-Green-Light}"
 
 if ! command -v rofi >/dev/null 2>&1; then

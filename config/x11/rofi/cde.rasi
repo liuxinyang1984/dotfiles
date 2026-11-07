@@ -1,5 +1,6 @@
-/* CDE-style rofi — dialog gray + teal selection
- * Outer Motif frame from fvwm (-normal-window).
+/* CDE-style rofi — dialog gray + teal selection（fvwm 用）
+ * 窗外框由 fvwm Motif（-normal-window）绘制；本文件保留 input/list 细线。
+ * dwm 用 cde-dwm.rasi（去自绘边，外框交 dwm CDE）。
  * kb-* lives here: FVWM Exec eats commas in -kb-row-* CLI args.
  */
 configuration {
