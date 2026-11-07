@@ -27,6 +27,6 @@ text_in_center=true
 lang=unix
 hide_key_hints=true
 asterisk=*
-# 标题在框顶，无 CyclableLabel 的 < >；info 行留空格避免退回 hostname
+# 标题在框顶，无 CyclableLabel 的 < >；info 用窄空格减轻 < > 空壳（无法完全关掉箭头）
 box_title=AT&T UNIX System V
-initial_info_text= 
+initial_info_text=·

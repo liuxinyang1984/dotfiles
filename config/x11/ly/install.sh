@@ -112,19 +112,41 @@ fi
 TTY_NUM="${LY_TTY:-1}"
 LY_UNIT="ly@tty${TTY_NUM}.service"
 
-# 按 key upsert 到 config.ini（不整文件覆盖）
+# 按 key upsert 到 config.ini（不整文件覆盖；勿用 sed 替换值，& 会被当成匹配引用）
 ly_upsert_ini() {
 	_ini=$1
 	_key=$2
 	_val=$3
 	_tmp=$(mktemp)
-	if [ -f "$_ini" ] && grep -qE "^[[:space:]]*${_key}[[:space:]]*=" "$_ini"; then
-		sed -E "s|^[[:space:]]*${_key}[[:space:]]*=.*|${_key} = ${_val}|" "$_ini" >"$_tmp"
-	elif [ -f "$_ini" ]; then
-		cp "$_ini" "$_tmp"
-		printf '%s = %s\n' "$_key" "$_val" >>"$_tmp"
+	if command -v python3 >/dev/null 2>&1; then
+		python3 - "$_ini" "$_key" "$_val" "$_tmp" <<'PY'
+import re, sys
+path, key, val, out = sys.argv[1:5]
+try:
+	text = open(path, encoding="utf-8").read()
+except FileNotFoundError:
+	text = ""
+line = f"{key} = {val}"
+pat = re.compile(rf"^[ \t]*{re.escape(key)}[ \t]*=.*$", re.M)
+if pat.search(text):
+	text = pat.sub(line, text, count=1)
+else:
+	if text and not text.endswith("\n"):
+		text += "\n"
+	text += line + "\n"
+open(out, "w", encoding="utf-8").write(text)
+PY
 	else
-		printf '%s = %s\n' "$_key" "$_val" >"$_tmp"
+		# 无 python 时仍尽量转义 &
+		_esc=$(printf '%s' "$_val" | sed 's/[&\\]/\\&/g')
+		if [ -f "$_ini" ] && grep -qE "^[[:space:]]*${_key}[[:space:]]*=" "$_ini"; then
+			sed -E "s|^[[:space:]]*${_key}[[:space:]]*=.*|${_key} = ${_esc}|" "$_ini" >"$_tmp"
+		elif [ -f "$_ini" ]; then
+			cp "$_ini" "$_tmp"
+			printf '%s = %s\n' "$_key" "$_val" >>"$_tmp"
+		else
+			printf '%s = %s\n' "$_key" "$_val" >"$_tmp"
+		fi
 	fi
 	run_root install -m644 "$_tmp" "$_ini"
 	rm -f "$_tmp"
@@ -148,11 +170,15 @@ if [ "$DO_COLORS" = 1 ]; then
 		echo "Ly 配色/样式 ← $(basename "$LY_COLORS_FILE")（棕金 + 大时钟 + box_title）"
 		# 去掉注释空行，按 key=val 写入
 		while IFS= read -r _line || [ -n "$_line" ]; do
-			_line=$(printf '%s' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')
+			# 保留值两侧有意空格；只去掉整行注释
+			case "$_line" in
+			\#*|"") continue ;;
+			esac
+			_line=$(printf '%s' "$_line" | sed 's/[[:space:]]*#.*$//')
 			[ -z "$_line" ] && continue
 			_key=$(printf '%s' "$_line" | cut -d= -f1 | sed 's/[[:space:]]*$//')
 			_val=$(printf '%s' "$_line" | cut -d= -f2- | sed 's/^[[:space:]]*//')
-			[ -n "$_key" ] && [ -n "$_val" ] || continue
+			[ -n "$_key" ] || continue
 			ly_upsert_ini "$LY_INI" "$_key" "$_val"
 		done <"$LY_COLORS_FILE"
 	fi
