@@ -1,13 +1,13 @@
 # Ly 1.4+ truecolor：0xSSRRGGBB（SS=样式，01=TB_BOLD）
-# 老式 CRT / 荧光管暖黄字 + 黑底
-fg=0x01FFB000
+# 老式 CRT 棕琥珀（偏褐，少荧光黄）+ 黑底  #B8860B darkgoldenrod
+fg=0x01B8860B
 bg=0x00000000
-highlight=0x01FFB000
-input_fg=0x01FFB000
+highlight=0x01B8860B
+input_fg=0x01B8860B
 input_bg=0x00000000
-border_fg=0x01FFB000
+border_fg=0x01B8860B
 error_fg=0x01FF0000
 error_bg=0x00000000
-cmatrix_fg=0x01FFB000
-colormix_col1=0x01FFB000
+cmatrix_fg=0x01B8860B
+colormix_col1=0x01B8860B
 mode=dark

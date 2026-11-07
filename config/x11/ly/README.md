@@ -26,7 +26,7 @@
 
 ## 配色（CRT 荧光管黄）
 
-默认写入 [`crt-amber.colors`](crt-amber.colors)：前景/边框/输入框为暖黄 `#FFB000`（粗体），黑底。Ly 1.4+ 用 `0xSSRRGGBB`。
+默认写入 [`crt-amber.colors`](crt-amber.colors)：前景/边框/输入框为棕琥珀 `#B8860B`（粗体），黑底。Ly 1.4+ 用 `0xSSRRGGBB`。
 
 ```bash
 ./config/x11/ly/install.sh --no-packages --no-enable   # 只改字色等
