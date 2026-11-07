@@ -27,6 +27,6 @@ text_in_center=true
 lang=unix
 hide_key_hints=true
 asterisk=*
-# 标题在框顶，无 CyclableLabel 的 < >；info 用窄空格减轻 < > 空壳（无法完全关掉箭头）
-box_title=AT&T UNIX System V
-initial_info_text=·
+# 标题在框顶；两侧加空格并略偏右；info 置空（配合去箭头的 ly-dm）
+box_title=        AT&T UNIX System V        
+initial_info_text=

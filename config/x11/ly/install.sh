@@ -177,11 +177,18 @@ if [ "$DO_COLORS" = 1 ]; then
 			_line=$(printf '%s' "$_line" | sed 's/[[:space:]]*#.*$//')
 			[ -z "$_line" ] && continue
 			_key=$(printf '%s' "$_line" | cut -d= -f1 | sed 's/[[:space:]]*$//')
-			_val=$(printf '%s' "$_line" | cut -d= -f2- | sed 's/^[[:space:]]*//')
+			# 只去掉「= 后的一个空格」，保留值里故意的前导空格（box_title 缩进）
+			_val=$(printf '%s' "$_line" | cut -d= -f2- | sed 's/^ //')
 			[ -n "$_key" ] || continue
 			ly_upsert_ini "$LY_INI" "$_key" "$_val"
 		done <"$LY_COLORS_FILE"
 	fi
+fi
+
+# 去掉 info/session 两侧 < >（打补丁的 ly-dm → /usr/local/bin）
+if [ -f "$ROOT/patch-ly-arrows.sh" ]; then
+	chmod +x "$ROOT/patch-ly-arrows.sh"
+	sh "$ROOT/patch-ly-arrows.sh" || echo "警告: ly 去箭头补丁未应用" >&2
 fi
 
 if [ "$DO_ENABLE" = 1 ]; then
