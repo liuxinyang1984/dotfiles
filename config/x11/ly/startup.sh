@@ -21,9 +21,10 @@ fi
 if [ "${TERM:-}" = "linux" ] || [ -n "$_tty" ]; then
 	# 黑 / 红 / 绿 / 棕金 / 蓝 / 品红 / 青 / 浅灰
 	# 深灰 / 亮红 / 亮绿 / 亮棕金 / 亮蓝 / 亮品红 / 亮青 / 白
+	# 绿槽也改成棕金：matrix 雨滴在 16 色 TTY 上常走绿，否则仍是荧光绿
 	BLACK="000000"
 	DARK_RED="AA0000"
-	DARK_GREEN="00AA00"
+	DARK_GREEN="8B6914"
 	DARK_YELLOW="AE8010"
 	DARK_BLUE="0000AA"
 	DARK_MAGENTA="AA00AA"
@@ -31,7 +32,7 @@ if [ "${TERM:-}" = "linux" ] || [ -n "$_tty" ]; then
 	LIGHT_GRAY="AAAAAA"
 	DARK_GRAY="555555"
 	RED="FF5555"
-	GREEN="55FF55"
+	GREEN="C09020"
 	YELLOW="C09020"
 	BLUE="5555FF"
 	MAGENTA="FF55FF"

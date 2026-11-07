@@ -1,5 +1,5 @@
 # Ly 1.4+ truecolor：0xSSRRGGBB（SS=样式，01=TB_BOLD）
-# 深棕金 #AE8010（#B68A18 仍偏黄，#A67C00 偏红）
+# 深棕金 #AE8010 + matrix 动画 + 镂空登录框
 fg=0x01AE8010
 bg=0x00000000
 highlight=0x01AE8010
@@ -9,5 +9,9 @@ border_fg=0x01AE8010
 error_fg=0x01FF0000
 error_bg=0x00000000
 cmatrix_fg=0x01AE8010
+cmatrix_head_col=0x01C09020
 colormix_col1=0x01AE8010
 mode=dark
+animation=matrix
+blank_box=true
+hide_borders=false

@@ -28,9 +28,9 @@
 
 Linux **文本控制台只有 16 色**。Ly 的 `0xSSRRGGBB` 真彩会并到最近的调色板槽；多种「棕/黄」都会落成同一个刺眼的 **黄**（尤其亮黄 `#FFFF55`），所以只改 `config.ini` 的 fg 常常看不出差别。
 
-本模块用 [`startup.sh`](startup.sh) 在 Ly 起来前重写 VT 调色板：把暗黄/亮黄槽改成棕金（`#AE8010` / `#C09020`）。这才是 TTY 上真正能看见的颜色。
+本模块用 [`startup.sh`](startup.sh) 在 Ly 起来前重写 VT 调色板：把暗黄/亮黄/绿槽改成棕金（matrix 雨滴在 TTY 上常走绿色）。这才是 TTY 上真正能看见的颜色。
 
-`crt-amber.colors` 仍写入 ini（在支持真彩的终端模拟器里测 Ly 时有用）。
+默认样式（`crt-amber.colors`）：`animation = matrix`，`blank_box = true`（镂空登录框）。
 
 ```bash
 ./config/x11/ly/install.sh --no-packages --no-enable
