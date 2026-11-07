@@ -11,7 +11,9 @@
 
 ```bash
 ./install.sh desktop:kiosk
-# → ~/.local/bin/kiosk-session ；startx kiosk 即可
+# → ~/.local/bin/kiosk-session ；并把 kiosk.desktop 写入 /usr/share/xsessions/
+#   （供 Ly 等 DM；LY_SKIP_XSESSION=1 可跳过）
+# startx kiosk 亦可
 ```
 
 ## 用法
