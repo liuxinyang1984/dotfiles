@@ -1,9 +1,11 @@
 #!/bin/sh
 # Ly：TUI 显示管理器 + Terminus console 字体
-#   ./install.sh              # Arch：装 ly/terminus-font，FONT=ter-132b，enable ly@ttyN
+#   ./install.sh              # Arch：装 ly/terminus-font，FONT=ter-132b，CRT 黄，enable ly@ttyN
 #   ./install.sh --no-packages  # 不跑 pacman，只改配置/单元
 #   ./install.sh --no-enable    # 不 enable systemd
+#   ./install.sh --no-colors    # 不改 /etc/ly/config.ini 颜色
 # 父仓: ./install.sh x11:ly
+# 颜色文件: crt-amber.colors（LY_COLORS=path 可换）；LY_SKIP_COLORS=1 等同 --no-colors
 #
 # 会话 .desktop 由各 desktop 模块自己装到 /usr/share/xsessions。
 # 本模块额外提供 TTY 会话 tmux → /etc/ly/custom-sessions（可选）。
@@ -11,16 +13,19 @@ set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DO_PKGS=1
 DO_ENABLE=1
+DO_COLORS=1
 FONT_NAME="${LY_FONT:-ter-132b}"
 LY_INI="${LY_INI:-/etc/ly/config.ini}"
 LY_CUSTOM="${LY_CUSTOM:-/etc/ly/custom-sessions}"
+LY_COLORS_FILE="${LY_COLORS:-$ROOT/crt-amber.colors}"
 
 usage() {
 	cat <<'EOF'
-用法: ./install.sh [--no-packages] [--no-enable]
+用法: ./install.sh [--no-packages] [--no-enable] [--no-colors]
 
   Arch: pacman -S ly terminus-font
   /etc/vconsole.conf → FONT=ter-132b（即口语 ter-v32b）
+  /etc/ly/config.ini → CRT 荧光管暖黄（crt-amber.colors）
   systemctl enable ly@ttyN（N 读自 /etc/ly/config.ini，默认 2）
   可选: tmux.desktop → /etc/ly/custom-sessions/
 
@@ -32,10 +37,12 @@ for arg in "$@"; do
 	case "$arg" in
 	--no-packages) DO_PKGS=0 ;;
 	--no-enable) DO_ENABLE=0 ;;
+	--no-colors) DO_COLORS=0 ;;
 	-h|--help) usage; exit 0 ;;
 	*) echo "未知参数: $arg" >&2; usage >&2; exit 1 ;;
 	esac
 done
+[ "${LY_SKIP_COLORS:-0}" = 1 ] && DO_COLORS=0
 
 run_root() {
 	if [ "$(id -u)" -eq 0 ]; then
@@ -92,6 +99,44 @@ if [ -f "$LY_INI" ]; then
 	[ -n "${n:-}" ] && TTY_NUM=$n
 fi
 LY_UNIT="ly@tty${TTY_NUM}.service"
+
+# CRT 暖黄：按 colors 文件 upsert 到 config.ini（不整文件覆盖）
+ly_upsert_ini() {
+	_ini=$1
+	_key=$2
+	_val=$3
+	_tmp=$(mktemp)
+	if [ -f "$_ini" ] && grep -qE "^[[:space:]]*${_key}[[:space:]]*=" "$_ini"; then
+		sed -E "s|^[[:space:]]*${_key}[[:space:]]*=.*|${_key} = ${_val}|" "$_ini" >"$_tmp"
+	elif [ -f "$_ini" ]; then
+		cp "$_ini" "$_tmp"
+		printf '%s = %s\n' "$_key" "$_val" >>"$_tmp"
+	else
+		printf '%s = %s\n' "$_key" "$_val" >"$_tmp"
+	fi
+	run_root install -m644 "$_tmp" "$_ini"
+	rm -f "$_tmp"
+}
+
+if [ "$DO_COLORS" = 1 ]; then
+	if [ ! -f "$LY_COLORS_FILE" ]; then
+		echo "警告: 无颜色文件 $LY_COLORS_FILE，跳过配色" >&2
+	elif [ ! -f "$LY_INI" ] && [ ! -f /etc/ly/config.ini.example ]; then
+		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
+	else
+		[ -f "$LY_INI" ] || run_root install -m644 /etc/ly/config.ini.example "$LY_INI"
+		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（CRT 荧光管暖黄）"
+		# 去掉注释空行，按 key=val 写入
+		while IFS= read -r _line || [ -n "$_line" ]; do
+			_line=$(printf '%s' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')
+			[ -z "$_line" ] && continue
+			_key=$(printf '%s' "$_line" | cut -d= -f1 | sed 's/[[:space:]]*$//')
+			_val=$(printf '%s' "$_line" | cut -d= -f2- | sed 's/^[[:space:]]*//')
+			[ -n "$_key" ] && [ -n "$_val" ] || continue
+			ly_upsert_ini "$LY_INI" "$_key" "$_val"
+		done <"$LY_COLORS_FILE"
+	fi
+fi
 
 if [ "$DO_ENABLE" = 1 ]; then
 	echo "enable $LY_UNIT"
