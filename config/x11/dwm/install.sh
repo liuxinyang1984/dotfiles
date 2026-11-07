@@ -54,6 +54,14 @@ fi
 link_or_copy "$ROOT/dwm-session" "$BIN_DIR/dwm-session"
 echo "dwm-session → $BIN_DIR（mode=$MODE）; startx dwm"
 
+# 截图：scrot + swappy 预览（与 Hypr grim+swappy 对齐）
+_shot="$(cd "$ROOT/.." && pwd)/screenshot.sh"
+if [ -f "$_shot" ]; then
+	chmod +x "$_shot"
+	link_or_copy "$_shot" "$BIN_DIR/screenshot-x11"
+fi
+unset _shot
+
 # Ly / 其它 DM：注册 xsessions（需 sudo；LY_SKIP_XSESSION=1 跳过）
 _ly_xsess="$(cd "$ROOT/.." && pwd)/ly/install-xsession.sh"
 if [ -f "$ROOT/dwm.desktop" ] && [ -f "$_ly_xsess" ]; then
