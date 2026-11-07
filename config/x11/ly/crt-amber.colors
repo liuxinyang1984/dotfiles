@@ -1,13 +1,13 @@
 # Ly 1.4+ truecolor：0xSSRRGGBB（SS=样式，01=TB_BOLD）
-# 棕金 #B68A18（#C9A227 偏黄，#A67C00 偏红）
-fg=0x01B68A18
+# 深棕金 #AE8010（#B68A18 仍偏黄，#A67C00 偏红）
+fg=0x01AE8010
 bg=0x00000000
-highlight=0x01B68A18
-input_fg=0x01B68A18
+highlight=0x01AE8010
+input_fg=0x01AE8010
 input_bg=0x00000000
-border_fg=0x01B68A18
+border_fg=0x01AE8010
 error_fg=0x01FF0000
 error_bg=0x00000000
-cmatrix_fg=0x01B68A18
-colormix_col1=0x01B68A18
+cmatrix_fg=0x01AE8010
+colormix_col1=0x01AE8010
 mode=dark
