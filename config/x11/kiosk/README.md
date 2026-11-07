@@ -16,6 +16,8 @@
 # startx kiosk 亦可
 ```
 
+Ly / xsessions 的 `kiosk` 固定无参 → `st -e tmux`（session 名 `kiosk`）。换程序用 CLI：`kiosk-session …` / `startx kiosk -- …`。
+
 ## 用法
 
 ```bash
