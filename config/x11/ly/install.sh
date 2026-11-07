@@ -129,7 +129,7 @@ if [ "$DO_COLORS" = 1 ]; then
 	elif [ ! -f "$LY_INI" ]; then
 		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
 	else
-		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（金琥珀 #C9A227）"
+		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（棕金 #B68A18）"
 		# 去掉注释空行，按 key=val 写入
 		while IFS= read -r _line || [ -n "$_line" ]; do
 			_line=$(printf '%s' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')

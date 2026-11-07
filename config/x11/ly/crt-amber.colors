@@ -1,13 +1,13 @@
 # Ly 1.4+ truecolor：0xSSRRGGBB（SS=样式，01=TB_BOLD）
-# 折中金琥珀 #C9A227（比 #D79921 少荧光黄，比 #A67C00 少红）
-fg=0x01C9A227
+# 棕金 #B68A18（#C9A227 偏黄，#A67C00 偏红）
+fg=0x01B68A18
 bg=0x00000000
-highlight=0x01C9A227
-input_fg=0x01C9A227
+highlight=0x01B68A18
+input_fg=0x01B68A18
 input_bg=0x00000000
-border_fg=0x01C9A227
+border_fg=0x01B68A18
 error_fg=0x01FF0000
 error_bg=0x00000000
-cmatrix_fg=0x01C9A227
-colormix_col1=0x01C9A227
+cmatrix_fg=0x01B68A18
+colormix_col1=0x01B68A18
 mode=dark
