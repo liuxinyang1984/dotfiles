@@ -7,8 +7,8 @@
 | 本模块 | 不做 |
 |--------|------|
 | 装 `ly` / `terminus-font` | 不维护 dwm/kiosk/fvwm 的 `.desktop` |
-| `FONT=ter-132b`（口语 ter-v32b） | 不替代 `startx` / `*-session` |
-| CRT 荧光管暖黄 → `/etc/ly/config.ini` | |
+| 全 VT `FONT=ter-132b`（口语 ter-v32b） | 不替代 `startx` / `*-session` |
+| `/etc/ly/startup.sh`：16 色黄槽→棕金 | |
 | `systemctl enable ly@tty1`（默认） | |
 | 可选 `tmux` → `/etc/ly/custom-sessions/` | |
 
@@ -24,21 +24,31 @@
 
 选项：`--no-packages`、`--no-enable`、`--no-colors`。跳过某桌面的 xsessions：`LY_SKIP_XSESSION=1`。
 
-## 配色（CRT 荧光管黄）
+## 配色（为何改 hex 往往「没变」）
 
-默认写入 [`crt-amber.colors`](crt-amber.colors)：前景/边框/输入框为深棕金 `#AE8010`（粗体；`#B68A18` 偏黄、`#A67C00` 偏红），黑底。Ly 1.4+ 用 `0xSSRRGGBB`。
+Linux **文本控制台只有 16 色**。Ly 的 `0xSSRRGGBB` 真彩会并到最近的调色板槽；多种「棕/黄」都会落成同一个刺眼的 **黄**（尤其亮黄 `#FFFF55`），所以只改 `config.ini` 的 fg 常常看不出差别。
+
+本模块用 [`startup.sh`](startup.sh) 在 Ly 起来前重写 VT 调色板：把暗黄/亮黄槽改成棕金（`#AE8010` / `#C09020`）。这才是 TTY 上真正能看见的颜色。
+
+`crt-amber.colors` 仍写入 ini（在支持真彩的终端模拟器里测 Ly 时有用）。
 
 ```bash
-./config/x11/ly/install.sh --no-packages --no-enable   # 只改字色等
-# 跳过：--no-colors 或 LY_SKIP_COLORS=1
-# 换文件：LY_COLORS=/path/to.colors
+./config/x11/ly/install.sh --no-packages --no-enable
+sudo systemctl restart ly@tty1
 ```
-
-改完：`sudo systemctl restart ly@tty1`（tty 以 ini 为准）。
 
 ## 字体
 
-Arch Terminus console 名：`ter-132b` = 编码 1 + **32**px + **b**old（即常说的 ter-v32b）。
+Arch Terminus console 名：`ter-132b` = 编码 1 + **32**px + **b**old（即常说的 **ter-v32b**）。
+
+安装时：
+
+1. `/etc/vconsole.conf` → `FONT=ter-132b`（开机后所有 VT 默认）
+2. 立刻 `setfont` 到 **tty1–tty6**（`LY_TTY_MAX` 可改）
+3. `systemd-vconsole-setup` restart
+4. Ly 的 `startup.sh` 再对当前 TTY 设一次
+
+只改字体：`sudo ./config/x11/ly/setfont-all.sh ter-132b`
 
 ## TTY
 

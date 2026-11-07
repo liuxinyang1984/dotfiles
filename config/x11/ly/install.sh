@@ -24,8 +24,9 @@ usage() {
 用法: ./install.sh [--no-packages] [--no-enable] [--no-colors]
 
   Arch: pacman -S ly terminus-font
-  /etc/vconsole.conf → FONT=ter-132b（即口语 ter-v32b）
-  /etc/ly/config.ini → tty=1（LY_TTY=N 可改）、Gruvbox 配色
+  /etc/vconsole.conf → FONT=ter-132b（口语 ter-v32b），并 setfont 到 tty1–6
+  /etc/ly/startup.sh → 16 色调色板（黄槽改棕金；TTY 无真彩）
+  /etc/ly/config.ini → tty=1、配色、start_cmd
   systemctl enable ly@tty1（并 disable 旧 ly@tty2）
   可选: tmux.desktop → /etc/ly/custom-sessions/
 
@@ -91,6 +92,20 @@ else
 	else
 		printf '\nFONT=%s\n' "$FONT_NAME" | run_root tee -a /etc/vconsole.conf >/dev/null
 	fi
+	# 立刻打到所有文本 VT（不只 Ly 那一路）
+	if [ -f "$ROOT/setfont-all.sh" ]; then
+		chmod +x "$ROOT/setfont-all.sh"
+		run_root env LY_FONT="$FONT_NAME" LY_TTY_MAX="${LY_TTY_MAX:-6}" \
+			sh "$ROOT/setfont-all.sh" "$FONT_NAME" || true
+	fi
+	run_root systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
+fi
+
+# Ly 启动钩子：字体 + 16 色黄槽→棕金（TTY 真彩会并到 16 色，只改 ini 往往看不出差别）
+if [ -f "$ROOT/startup.sh" ]; then
+	chmod +x "$ROOT/startup.sh"
+	run_root install -m755 "$ROOT/startup.sh" /etc/ly/startup.sh
+	echo "startup.sh → /etc/ly/startup.sh（console 调色板）"
 fi
 
 # 默认 tty1（LY_TTY=N 覆盖）；写入 ini，不再跟发行版默认的 tty=2
@@ -121,6 +136,7 @@ fi
 if [ -f "$LY_INI" ]; then
 	echo "Ly tty = ${TTY_NUM}"
 	ly_upsert_ini "$LY_INI" tty "$TTY_NUM"
+	ly_upsert_ini "$LY_INI" start_cmd "/etc/ly/startup.sh"
 fi
 
 if [ "$DO_COLORS" = 1 ]; then
