@@ -28,3 +28,4 @@ lang=unix
 hide_key_hints=true
 asterisk=*
 box_title=null
+initial_info_text=AT&T UNIX System V
