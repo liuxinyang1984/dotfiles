@@ -1,13 +1,13 @@
 # Ly 1.4+ truecolor：0xSSRRGGBB（SS=样式，01=TB_BOLD）
-# 比 Gruvbox #D79921 更棕、少荧光黄：#A67C00
-fg=0x01A67C00
+# 折中金琥珀 #C9A227（比 #D79921 少荧光黄，比 #A67C00 少红）
+fg=0x01C9A227
 bg=0x00000000
-highlight=0x01A67C00
-input_fg=0x01A67C00
+highlight=0x01C9A227
+input_fg=0x01C9A227
 input_bg=0x00000000
-border_fg=0x01A67C00
+border_fg=0x01C9A227
 error_fg=0x01FF0000
 error_bg=0x00000000
-cmatrix_fg=0x01A67C00
-colormix_col1=0x01A67C00
+cmatrix_fg=0x01C9A227
+colormix_col1=0x01C9A227
 mode=dark
