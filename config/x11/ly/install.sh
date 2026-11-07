@@ -125,7 +125,7 @@ if [ "$DO_COLORS" = 1 ]; then
 		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
 	else
 		[ -f "$LY_INI" ] || run_root install -m644 /etc/ly/config.ini.example "$LY_INI"
-		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（CRT 荧光管暖黄）"
+		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（CRT 棕琥珀）"
 		# 去掉注释空行，按 key=val 写入
 		while IFS= read -r _line || [ -n "$_line" ]; do
 			_line=$(printf '%s' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')
