@@ -2,6 +2,50 @@
 
 按参数安装本机配置与工具。无参只打印用法。`vendor/` 是 git submodule，安装时跟对应远程分支 tip（工作区脏则沿用当前树）。
 
+## 更新（pull / 子模块）
+
+日常把本机跟到远程 **父仓记下的 submodule SHA**（多机同步用这个）：
+
+```bash
+cd ~/git/dotfiles
+git -c fetch.recurseSubmodules=false fetch origin
+git checkout master
+git pull --ff-only origin master
+# 或：git reset --hard origin/master   # 丢弃本地未提交改动时
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+说明：
+
+- `fetch.recurseSubmodules=false`：避免 `git fetch` 顺带拉 submodule 时 HTTPS/代理挂死，主仓先更新完再单独更新子模块。
+- `submodule update`（无 `--remote`）：检出 **父仓当前 commit 钉住的 SHA**，与 CI/其它机器一致。
+- 开发时要跟各 submodule **分支 tip**（可能与父仓记录不一致）：
+
+```bash
+git submodule update --init --remote --recursive
+# 之后若要把新 tip 记进父仓：git add vendor/<名> && git commit
+```
+
+HTTPS 拉子模块失败（SSL / 连不上 github.com:443）时，把该子仓改成 SSH 再拉（`submodule sync` 会按 `.gitmodules` 写回 HTTPS，改完先别 sync，或改完立刻 set-url）：
+
+```bash
+git -C vendor/fvwm remote set-url origin git@github.com:liuxinyang1984/fvwm.git
+GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=30' \
+  git -C vendor/fvwm fetch origin
+git -C vendor/fvwm checkout --detach "$(git ls-tree HEAD vendor/fvwm | awk '{print $3}')"
+```
+
+其它 `vendor/*` 同理（`suckless`、`tmux`、`zshrc` …）。本机已有代理时也可：`https_proxy=… git submodule update --init --recursive`。
+
+首次克隆：
+
+```bash
+git clone --recursive git@github.com:liuxinyang1984/dotfiles.git
+# 已 clone 未带子模块：
+git submodule update --init --recursive
+```
+
 ```bash
 ./install.sh <模块> [模块...]
 ```
