@@ -9,7 +9,7 @@
 | 装 `ly` / `terminus-font` | 不维护 dwm/kiosk/fvwm 的 `.desktop` |
 | `FONT=ter-132b`（口语 ter-v32b） | 不替代 `startx` / `*-session` |
 | CRT 荧光管暖黄 → `/etc/ly/config.ini` | |
-| `systemctl enable ly@ttyN` | |
+| `systemctl enable ly@tty1`（默认） | |
 | 可选 `tmux` → `/etc/ly/custom-sessions/` | |
 
 **会话声明归各 desktop**：`desktop:suckless` / `kiosk` / `fvwm` 安装时把对应 `.desktop` 写入 `/usr/share/xsessions/`（Ly 与其它 DM 都能读）。Hyprland 用发行版自带的 `wayland-sessions`。
