@@ -25,8 +25,8 @@ usage() {
 
   Arch: pacman -S ly terminus-font
   /etc/vconsole.conf → FONT=ter-132b（即口语 ter-v32b）
-  /etc/ly/config.ini → CRT 荧光管暖黄（crt-amber.colors）
-  systemctl enable ly@ttyN（N 读自 /etc/ly/config.ini，默认 2）
+  /etc/ly/config.ini → tty=1（LY_TTY=N 可改）、Gruvbox 配色
+  systemctl enable ly@tty1（并 disable 旧 ly@tty2）
   可选: tmux.desktop → /etc/ly/custom-sessions/
 
   dwm/kiosk/fvwm 的 xsessions 由对应 desktop:* 安装时写入。
@@ -93,14 +93,11 @@ else
 	fi
 fi
 
-TTY_NUM=2
-if [ -f "$LY_INI" ]; then
-	n=$(grep -E '^[[:space:]]*tty[[:space:]]*=' "$LY_INI" | head -1 | sed 's/.*=[[:space:]]*//' || true)
-	[ -n "${n:-}" ] && TTY_NUM=$n
-fi
+# 默认 tty1（LY_TTY=N 覆盖）；写入 ini，不再跟发行版默认的 tty=2
+TTY_NUM="${LY_TTY:-1}"
 LY_UNIT="ly@tty${TTY_NUM}.service"
 
-# CRT 暖黄：按 colors 文件 upsert 到 config.ini（不整文件覆盖）
+# 按 key upsert 到 config.ini（不整文件覆盖）
 ly_upsert_ini() {
 	_ini=$1
 	_key=$2
@@ -118,13 +115,20 @@ ly_upsert_ini() {
 	rm -f "$_tmp"
 }
 
+if [ ! -f "$LY_INI" ] && [ -f /etc/ly/config.ini.example ]; then
+	run_root install -m644 /etc/ly/config.ini.example "$LY_INI"
+fi
+if [ -f "$LY_INI" ]; then
+	echo "Ly tty = ${TTY_NUM}"
+	ly_upsert_ini "$LY_INI" tty "$TTY_NUM"
+fi
+
 if [ "$DO_COLORS" = 1 ]; then
 	if [ ! -f "$LY_COLORS_FILE" ]; then
 		echo "警告: 无颜色文件 $LY_COLORS_FILE，跳过配色" >&2
-	elif [ ! -f "$LY_INI" ] && [ ! -f /etc/ly/config.ini.example ]; then
+	elif [ ! -f "$LY_INI" ]; then
 		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
 	else
-		[ -f "$LY_INI" ] || run_root install -m644 /etc/ly/config.ini.example "$LY_INI"
 		echo "Ly 配色 ← $(basename "$LY_COLORS_FILE")（Gruvbox #D79921）"
 		# 去掉注释空行，按 key=val 写入
 		while IFS= read -r _line || [ -n "$_line" ]; do
@@ -139,6 +143,13 @@ if [ "$DO_COLORS" = 1 ]; then
 fi
 
 if [ "$DO_ENABLE" = 1 ]; then
+	# 从旧默认 tty2 迁走，避免双实例
+	if [ "$TTY_NUM" != 2 ]; then
+		run_root systemctl disable --now "ly@tty2.service" 2>/dev/null || true
+	fi
+	if [ "$TTY_NUM" != 1 ]; then
+		run_root systemctl disable --now "ly@tty1.service" 2>/dev/null || true
+	fi
 	echo "enable $LY_UNIT"
 	run_root systemctl enable "$LY_UNIT"
 fi

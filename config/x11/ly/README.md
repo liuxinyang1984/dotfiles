@@ -34,7 +34,7 @@
 # 换文件：LY_COLORS=/path/to.colors
 ```
 
-改完：`sudo systemctl restart ly@tty2`（tty 以 ini 为准）。
+改完：`sudo systemctl restart ly@tty1`（tty 以 ini 为准）。
 
 ## 字体
 
@@ -42,4 +42,4 @@ Arch Terminus console 名：`ter-132b` = 编码 1 + **32**px + **b**old（即常
 
 ## TTY
 
-默认读 `/etc/ly/config.ini` 的 `tty=`（多为 2）→ `ly@tty2.service`。Ctrl+Alt+F2 进 Ly。
+默认 **`tty = 1`** → `ly@tty1.service`（安装时写入 ini，并 disable 旧的 `ly@tty2`）。换号：`LY_TTY=2 ./install.sh …`。Ctrl+Alt+F1 进 Ly。
