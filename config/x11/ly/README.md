@@ -30,7 +30,7 @@ Linux **文本控制台只有 16 色**。Ly 的 `0xSSRRGGBB` 真彩会并到最�
 
 本模块用 [`startup.sh`](startup.sh) 在 Ly 起来前重写 VT 调色板：把暗黄/亮黄/绿槽改成棕金（matrix 雨滴在 TTY 上常走绿色）。这才是 TTY 上真正能看见的颜色。
 
-默认样式（`crt-amber.colors`）：`animation = gameoflife`，`blank_box = true`（镂空登录框）。
+默认样式（`crt-amber.colors`）：`animation = doom`（棕金火焰），`blank_box = true`（镂空登录框）。
 
 ```bash
 ./config/x11/ly/install.sh --no-packages --no-enable
