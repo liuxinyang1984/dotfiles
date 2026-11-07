@@ -145,7 +145,7 @@ if [ "$DO_COLORS" = 1 ]; then
 	elif [ ! -f "$LY_INI" ]; then
 		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
 	else
-		echo "Ly 配色/样式 ← $(basename "$LY_COLORS_FILE")（棕金 + 大时钟 + 实心框）"
+		echo "Ly 配色/样式 ← $(basename "$LY_COLORS_FILE")（棕金 + 大时钟 + unix 提示）"
 		# 去掉注释空行，按 key=val 写入
 		while IFS= read -r _line || [ -n "$_line" ]; do
 			_line=$(printf '%s' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -168,6 +168,13 @@ if [ "$DO_ENABLE" = 1 ]; then
 	fi
 	echo "enable $LY_UNIT"
 	run_root systemctl enable "$LY_UNIT"
+fi
+
+# 老式 Unix 提示文案
+if [ -f "$ROOT/lang/unix.ini" ]; then
+	run_root mkdir -p /etc/ly/lang
+	run_root install -m644 "$ROOT/lang/unix.ini" /etc/ly/lang/unix.ini
+	echo "lang ← unix.ini（login: / Password:）"
 fi
 
 # tmux → Ly custom-sessions（Terminal=true，不宜放 xsessions）

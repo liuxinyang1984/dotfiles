@@ -24,3 +24,7 @@ bigclock_seconds=true
 blank_box=false
 hide_borders=false
 text_in_center=true
+lang=unix
+hide_key_hints=true
+asterisk=*
+box_title=null
