@@ -9,6 +9,7 @@
 - `box_title` 绘制时右偏并加左右空格（ini 会 trim，不能靠配置空格）
 - 主题色 **软方块光标**（藏硬件白光标；颜色跟 `fg`）
 - **注销后退出进程**，systemd `Restart=always` + `TTYReset` 再拉起（避免 i915/fbcon 上 soft reclaim 滚屏花屏）
+- 默认 `waylandsessions = null`（纯 X11 机无 `/usr/share/wayland-sessions` 时不报 `err_crawl`）
 
 ## 安装
 

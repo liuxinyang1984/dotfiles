@@ -445,7 +445,8 @@ ly = {
     -- You can specify multiple directories,
     -- e.g. $PREFIX_DIRECTORY/share/wayland-sessions:$PREFIX_DIRECTORY/local/share/wayland-sessions
     -- If null, Wayland sessions will not be shown
-    waylandsessions = "$PREFIX_DIRECTORY/share/wayland-sessions",
+    -- CRT fork default: null (X11-only machines otherwise hit err_crawl)
+    waylandsessions = nil,
 
     -- Xorg server command
     -- Add the -quiet argument to hide startup logs from the server

@@ -214,6 +214,8 @@ fi
 echo "Ly tty = ${TTY_NUM}"
 ly_upsert_ini "$LY_INI" tty "$TTY_NUM"
 ly_upsert_ini "$LY_INI" start_cmd "/etc/ly/startup.sh"
+# 本 fork 面向 X11；未装 Wayland 时默认路径会触发 err_crawl
+ly_upsert_ini "$LY_INI" waylandsessions "null"
 
 if [ "$DO_COLORS" = 1 ]; then
 	if [ ! -f "$LY_COLORS_FILE" ]; then
