@@ -42,6 +42,6 @@ if command -v xset >/dev/null 2>&1; then
 	xset dpms "$IDLE_DPMS_SEC" "$IDLE_DPMS_SEC" "$IDLE_DPMS_SEC"
 fi
 
-# dwmblocks / fcitx5 / dunst / clipmenud / picom / xss-lock 须在同一 dbus-run-session
+# dwmblocks / fcitx5 / dunst / clipmenud / picom / xss-lock / mini-polkit 须在同一 dbus-run-session
 # （blocks 在 session 外起则无 DBUS，sb-fcitx 的 fcitx5-remote 恒失败→永远「英」）
-exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; if command -v xss-lock >/dev/null 2>&1; then xss-lock -l -- slock & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; if command -v xss-lock >/dev/null 2>&1; then xss-lock -l -- slock & fi; if command -v mini-polkit-agent >/dev/null 2>&1; then mini-polkit-agent & elif command -v mini-polkit >/dev/null 2>&1; then mini-polkit \"dmenu -P -c -bw 2 -p Password:\" & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""

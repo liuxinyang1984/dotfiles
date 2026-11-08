@@ -22,13 +22,41 @@ DST="${LY_DM_DST:-/usr/local/bin/ly-dm}"
 
 usage() {
 	cat <<'EOF'
-用法: ./install.sh [--no-packages] [--no-enable] [--no-colors] [--no-build]
+用法: ./install.sh [选项]
 
-  从本仓源码 zig build → /usr/local/bin/ly-dm（不依赖发行版 ly 行为）
-  Arch 可选: pacman 装 zig / terminus-font /（可选）ly 仅借 unit 模板
-  Alpine 等: 需已有 zig≥0.17 与 console 字体；自行提供等价 unit
-  配色: crt-current.colors；调色板: /etc/ly/theme（见 theme.sh）
-  默认 enable ly@tty1（LY_TTY=N）；其它 ly@ttyN 只 disable 不 stop
+从本仓源码安装 Ly CRT 显示管理器（需提权）。
+
+选项:
+  （默认）         装依赖 + zig 编译 ly-dm + 写 config.ini 配色 + enable 服务
+  --no-packages    不 pacman/apk 装依赖
+  --no-build       不编译（沿用已有 /usr/local/bin/ly-dm）
+  --no-colors      不把 crt-*.colors 写进 config.ini
+  --no-enable      不 systemctl enable/restart ly@ttyN
+  -h, --help       显示本说明
+
+环境变量:
+  LY_TTY=N         使用的 TTY（默认 1）→ 单元 ly@ttyN
+  LY_FONT=…        控制台字体（默认 ter-132b）
+  LY_COLORS=路径   配色文件（默认 crt-current.colors）
+  LY_DM_DST=路径   二进制安装路径（默认 /usr/local/bin/ly-dm）
+  LY_INI=路径      config.ini（默认 /etc/ly/config.ini）
+
+会写入 / 调整:
+  /usr/local/bin/ly-dm
+  /etc/ly/config.ini     （tty、start_cmd、waylandsessions=null、配色键）
+  /etc/ly/startup.sh、theme、lang、custom-sessions
+  systemd: ly@.service.d/override.conf（Restart=always 等）
+
+主题切换（装完后）:
+  ./theme.sh amber|green
+
+父仓调用:
+  ./install.sh x11:ly
+
+示例:
+  ./install.sh
+  ./install.sh --no-packages --no-enable
+  LY_TTY=2 ./install.sh --no-packages
 EOF
 }
 

@@ -21,7 +21,7 @@
 ./install.sh x11:ly
 ```
 
-选项：`--no-packages` / `--no-enable` / `--no-colors` / `--no-build`。
+选项见 `./install.sh --help`（`--no-packages` / `--no-enable` / `--no-colors` / `--no-build`；`LY_TTY` / `LY_FONT` 等）。
 
 - **Arch**：`pacman` 装 `zig`、`terminus-font`；（可选）官方 `ly` 只借 systemd unit
 - **Alpine**：同源 `zig build`；需自备 zig≥0.17 与字体 / service

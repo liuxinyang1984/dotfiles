@@ -8,8 +8,10 @@
 | `cde-dwm.rasi` | dwm：无图标列（run / clip 基座）+ `-normal-window` |
 | `cde-dwm-drun.rasi` | dwm + drun：有图标 |
 | `cde-clip.rasi` | 剪切板列表（无图标；导入 cde-dwm） |
+| `cde-dwm-password.rasi` | 密码框：标题 + 输入栏，无列表（mini-polkit） |
 | `rofi-drun` | `rofi -show drun`（.desktop 启动器） |
 | `rofi-run` | `rofi -show run`（类 dmenu，跑 PATH 命令） |
+| `rofi-askpass` | 给 mini-polkit 的密码 UI（`./mini-polkit/install.sh --prompt=rofi`） |
 
 ## 安装
 
@@ -21,8 +23,8 @@
 
 落地：
 
-- `~/.config/rofi/cde.rasi`、`cde-dwm.rasi`、`cde-dwm-drun.rasi`、`cde-clip.rasi`
-- `~/.local/bin/rofi-drun` / `rofi-run`
+- `~/.config/rofi/cde.rasi`、`cde-dwm.rasi`、`cde-dwm-drun.rasi`、`cde-clip.rasi`、`cde-dwm-password.rasi`
+- `~/.local/bin/rofi-drun` / `rofi-run` / `rofi-askpass`
 
 依赖：`rofi`；图标主题可选 `Flat-Remix-Green-Light`（可用 `ROFI_ICON_THEME` 覆盖）。
 

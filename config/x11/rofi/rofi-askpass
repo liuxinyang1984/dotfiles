@@ -1,0 +1,34 @@
+#!/bin/sh
+# rofi-askpass — mini-polkit / SSH_ASKPASS 用的 CDE 密码框（密码 → stdout）
+# 用法:
+#   rofi-askpass [标题文案]
+#   ROFI_ASKPASS_MESG=… ROFI_ASKPASS_PROMPT=… rofi-askpass
+# mini-polkit:
+#   mini-polkit "rofi-askpass '{{MESSAGE}}'"
+set -e
+ROFI_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+THEME="${ROFI_ASKPASS_THEME:-$ROFI_CONF/cde-dwm-password.rasi}"
+PROMPT="${ROFI_ASKPASS_PROMPT:-Password:}"
+
+if [ "$#" -ge 1 ]; then
+	MESG=$1
+elif [ -n "${ROFI_ASKPASS_MESG:-}" ]; then
+	MESG=$ROFI_ASKPASS_MESG
+else
+	MESG="请输入密码授权"
+fi
+
+if ! command -v rofi >/dev/null 2>&1; then
+	echo "rofi-askpass: 未安装 rofi" >&2
+	exit 1
+fi
+if [ ! -f "$THEME" ]; then
+	echo "rofi-askpass: 缺少主题 $THEME（./install.sh x11:rofi）" >&2
+	exit 1
+fi
+
+exec rofi -normal-window -steal-focus \
+	-dmenu -password \
+	-theme "$THEME" \
+	-mesg "$MESG" \
+	-p "$PROMPT"

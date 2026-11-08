@@ -13,3 +13,9 @@ startx dwm
 
 快捷键（`config.def.rofi.h` → `config.h`，需 `./install.sh x11:rofi`）：
 **Super+Space** → `rofi-drun`（.desktop），**Super+r** → `rofi-run`（PATH 命令）。
+
+polkit：`dwm-session` 会起 `mini-polkit-agent`（若已装）。后端默认 dmenu，可：
+
+```bash
+./vendor/suckless/mini-polkit/install.sh --prompt=rofi
+```
