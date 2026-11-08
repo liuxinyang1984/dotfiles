@@ -3,6 +3,8 @@
 #   dwm-session
 #   startx dwm
 #   startx ~/.local/bin/dwm-session
+#
+# 不 exec dwm：退出后先杀助手，减少 X 已死后的 cannot open display 刷屏。
 
 _common="${XDG_CONFIG_HOME:-$HOME/.config}/x11/session-common.sh"
 if [ -f "$_common" ]; then
@@ -17,7 +19,7 @@ unset _common
 if command -v feh >/dev/null 2>&1; then
 	mkdir -p "$HOME/Pictures/wallpapers"
 	if ls "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1; then
-		feh --bg-fill --randomize "$HOME/Pictures/wallpapers/"* &
+		feh --bg-fill --randomize "$HOME/Pictures/wallpapers/"* >/dev/null 2>&1 &
 	fi
 fi
 
@@ -44,4 +46,42 @@ fi
 
 # dwmblocks / fcitx5 / dunst / clipmenud / picom / xss-lock / mini-polkit 须在同一 dbus-run-session
 # （blocks 在 session 外起则无 DBUS，sb-fcitx 的 fcitx5-remote 恒失败→永远「英」）
-exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; if command -v xss-lock >/dev/null 2>&1; then xss-lock -l -- slock & fi; if command -v mini-polkit-agent >/dev/null 2>&1; then mini-polkit-agent & elif command -v mini-polkit >/dev/null 2>&1; then mini-polkit \"dmenu -P -c -bw 2 -p Password:\" & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+# 显式记 PID（非交互 sh 的 jobs -p 不可靠）；助手 stderr 丢弃
+exec dbus-run-session -- sh -c "
+export PATH=\"${HOME}/.local/bin:\${PATH}\"
+PIDS=
+quiet() { \"\$@\" >/dev/null 2>&1 & PIDS=\"\$PIDS \$!\"; }
+
+fcitx5 -d >/dev/null 2>&1 || true
+command -v dwmblocks >/dev/null 2>&1 && quiet dwmblocks
+command -v dunst >/dev/null 2>&1 && quiet dunst
+command -v clipmenud >/dev/null 2>&1 && quiet clipmenud
+command -v xss-lock >/dev/null 2>&1 && quiet xss-lock -l -- slock
+if command -v mini-polkit-agent >/dev/null 2>&1; then
+  quiet mini-polkit-agent
+elif command -v mini-polkit >/dev/null 2>&1; then
+  quiet mini-polkit \"dmenu -P -c -bw 2 -p Password:\"
+fi
+if [ -n \"$PICOM_BIN\" ]; then
+  \"$PICOM_BIN\" --experimental-backends -b >/dev/null 2>&1 || true
+fi
+
+\"$DWM_BIN\"
+ec=\$?
+
+# X 多半还在：先杀助手
+for p in \$PIDS; do
+  kill \"\$p\" 2>/dev/null || true
+done
+# fcitx5 -d / picom -b 会脱壳，按名补一刀
+pkill -x dwmblocks 2>/dev/null || true
+pkill -x dunst 2>/dev/null || true
+pkill -x clipmenud 2>/dev/null || true
+pkill -x xss-lock 2>/dev/null || true
+pkill -x mini-polkit 2>/dev/null || true
+pkill -x mini-polkit-agent 2>/dev/null || true
+pkill -x picom 2>/dev/null || true
+pkill -x fcitx5 2>/dev/null || true
+wait 2>/dev/null || true
+exit \$ec
+"
