@@ -1,0 +1,12 @@
+## What are the changes about?
+
+_Replace this with a brief description of your changes_
+
+## What existing issue(s) does this resolve?
+
+_Replace this with a reference to (an) existing issue(s), or N/A if there is none_
+
+## Pre-requisites
+
+- [ ] I have tested & confirmed the changes work locally
+- [ ] I have read and fully adhere to the rules set in the contributing guidelines found in `CONTRIBUTING.md`

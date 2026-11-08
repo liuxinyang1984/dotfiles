@@ -1,0 +1,768 @@
+const std = @import("std");
+const Md5 = std.crypto.hash.Md5;
+const builtin = @import("builtin");
+const build_options = @import("build_options");
+
+const ly_core = @import("ly-ui").ly_core;
+const interop = ly_core.interop;
+const SharedError = ly_core.SharedError;
+const LogFile = ly_core.LogFile;
+const utmp = interop.utmp;
+const Utmp = utmp.utmpx;
+
+const Environment = @import("Environment.zig");
+
+pub const AuthOptions = struct {
+    tty: u8,
+    service_name: [:0]const u8,
+    path: ?[]const u8,
+    session_log: ?[]const u8,
+    xauth_cmd: []const u8,
+    setup_cmd: []const u8,
+    login_cmd: ?[]const u8,
+    faillock_tally_dir: []const u8,
+    x_cmd: []const u8,
+    x_vt: ?u8,
+    session_pid: std.posix.pid_t,
+    use_kmscon_vt: bool,
+};
+
+const PamAppdata = struct {
+    username: []const u8,
+    password: []const u8,
+    new_authtok_requested: bool,
+    authreq_responded: bool,
+    new_password: []const u8,
+};
+
+//https://github.com/linux-pam/linux-pam/blob/master/modules/pam_faillock/faillock.h#L55
+const PamFaillockEntry = extern struct {
+    pub const STATUS_VALID: usize = 0x1;
+    pub const STATUS_RHOST: usize = 0x2;
+    pub const STATUS_TTY: usize = 0x4;
+
+    source: [52]u8,
+    reserved: u16,
+    status: u16,
+    time: u64,
+};
+
+var xorg_pid: std.posix.pid_t = 0;
+pub fn xorgSignalHandler(sig: std.posix.SIG) callconv(.c) void {
+    if (xorg_pid > 0) _ = std.c.kill(xorg_pid, sig);
+}
+
+var child_pid: std.posix.pid_t = 0;
+pub fn sessionSignalHandler(sig: std.posix.SIG) callconv(.c) void {
+    if (child_pid > 0) _ = std.c.kill(child_pid, sig);
+}
+
+pub fn authenticate(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    log_file: *LogFile,
+    options: AuthOptions,
+    current_environment: Environment,
+    login: []const u8,
+    password: []const u8,
+    maybe_new_password: ?[]const u8,
+) !void {
+    const lock_path = try std.fs.path.join(allocator, &.{ options.faillock_tally_dir, login });
+    defer allocator.free(lock_path);
+
+    var faillock_entries: usize = 0;
+    if (try fileExists(io, lock_path)) {
+        faillock_entries = try getFaillockEntries(io, lock_path);
+    }
+
+    var tty_buffer: [3]u8 = undefined;
+    const tty_str = try std.fmt.bufPrint(&tty_buffer, "{d}", .{options.tty});
+
+    var pam_tty_buffer: [6]u8 = undefined;
+    const pam_tty_str = try std.fmt.bufPrintSentinel(&pam_tty_buffer, "tty{d}", .{options.tty}, 0);
+
+    // Set the XDG environment variables
+    try log_file.info(io, "auth/env", "setting xdg environment variables", .{});
+    try setXdgEnv(allocator, tty_str, current_environment);
+
+    // Open the PAM session
+    try log_file.info(io, "auth/pam", "encoding credentials", .{});
+
+    var credentials: PamAppdata = .{
+        .username = login,
+        .password = password,
+        .new_authtok_requested = false,
+        .authreq_responded = false,
+        .new_password = "",
+    };
+
+    const conv = interop.pam.pam_conv{
+        .conv = loginConv,
+        .appdata_ptr = @ptrCast(&credentials),
+    };
+    var handle: ?*interop.pam.pam_handle = undefined;
+
+    try log_file.info(io, "auth/pam", "starting session", .{});
+    var status = interop.pam.pam_start(options.service_name, null, &conv, &handle);
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+    defer _ = interop.pam.pam_end(handle, status);
+
+    // Set PAM_TTY as the current TTY. This is required in case it isn't being set by another PAM module
+    try log_file.info(io, "auth/pam", "setting tty", .{});
+    status = interop.pam.pam_set_item(handle, interop.pam.PAM_TTY, pam_tty_str.ptr);
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+
+    // Do the PAM routine
+    try log_file.info(io, "auth/pam", "authenticating", .{});
+    status = interop.pam.pam_authenticate(handle, 0);
+    if (status == interop.pam.PAM_AUTH_ERR and try fileExists(io, lock_path)) {
+        const new_faillock_entries = try getFaillockEntries(io, lock_path);
+
+        if (faillock_entries == new_faillock_entries) {
+            return error.AccountLocked;
+        }
+    }
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+
+    try log_file.info(io, "auth/pam", "validating account", .{});
+    status = interop.pam.pam_acct_mgmt(handle, 0);
+    if (status == interop.pam.PAM_NEW_AUTHTOK_REQD) {
+        if (maybe_new_password) |new_passwsord| {
+            credentials.new_authtok_requested = true;
+            credentials.new_password = new_passwsord;
+            status = interop.pam.pam_chauthtok(handle, interop.pam.PAM_CHANGE_EXPIRED_AUTHTOK);
+        }
+    }
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+
+    try log_file.info(io, "auth/pam", "setting credentials", .{});
+    status = interop.pam.pam_setcred(handle, interop.pam.PAM_ESTABLISH_CRED);
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+    defer status = interop.pam.pam_setcred(handle, interop.pam.PAM_DELETE_CRED);
+
+    try log_file.info(io, "auth/pam", "opening session", .{});
+    status = interop.pam.pam_open_session(handle, 0);
+    if (status != interop.pam.PAM_SUCCESS) return pamDiagnose(status);
+    defer status = interop.pam.pam_close_session(handle, 0);
+
+    try log_file.info(io, "auth/passwd", "getting struct", .{});
+    var user_entry: interop.UsernameEntry = undefined;
+    {
+        defer interop.closePasswordDatabase();
+
+        // Get password structure from username
+        user_entry = interop.getUsernameEntry(allocator, login) orelse return error.GetPasswordNameFailed;
+    }
+
+    // Set user shell if it hasn't already been set
+    try log_file.info(io, "auth/passwd", "setting user shell", .{});
+    if (user_entry.shell == null) interop.setUserShell(&user_entry);
+
+    // chown & chmod stdin (which is the TTY)
+    // https://github.com/mirror/busybox/blob/371fe9f71d445d18be28c82a2a6d82115c8af19d/loginutils/login.c#L558
+    if (interop.isError(std.posix.system.fchown(std.posix.STDIN_FILENO, user_entry.uid, user_entry.gid))) return error.TtyChownFailed;
+    if (interop.isError(std.posix.system.fchmod(std.posix.STDIN_FILENO, 0o600))) return error.TtyChmodFailed;
+
+    var shared_err = try SharedError.init(null, null);
+    defer shared_err.deinit();
+
+    log_file.deinit(io);
+
+    child_pid = std.posix.system.fork();
+    if (child_pid == 0) {
+        try log_file.reinit(io);
+        try log_file.info(io, "auth/sys", "starting session", .{});
+
+        startSession(log_file, allocator, io, options, tty_str, user_entry, handle, current_environment) catch |e| {
+            shared_err.writeError(e);
+
+            log_file.deinit(io);
+            std.process.exit(1);
+        };
+
+        log_file.deinit(io);
+        std.process.exit(0);
+    }
+
+    var entry = std.mem.zeroes(Utmp);
+
+    {
+        // If an error occurs here, we can send SIGTERM to the session
+        errdefer cleanup: {
+            std.posix.kill(child_pid, std.posix.SIG.TERM) catch break :cleanup;
+            var child_status: c_int = undefined;
+            _ = std.posix.system.waitpid(child_pid, &child_status, 0);
+        }
+
+        // If we receive SIGTERM, forward it to child_pid
+        const act = std.posix.Sigaction{
+            .handler = .{ .handler = &sessionSignalHandler },
+            .mask = std.posix.sigemptyset(),
+            .flags = 0,
+        };
+        std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+
+        try addUtmpEntry(io, &entry, user_entry.username.?, child_pid);
+    }
+    // Wait for the session to stop
+    var child_status: c_int = undefined;
+    _ = std.posix.system.waitpid(child_pid, &child_status, 0);
+
+    try log_file.reinit(io);
+
+    try log_file.info(io, "auth/utmp", "removing utmp entry", .{});
+    removeUtmpEntry(&entry);
+
+    if (shared_err.readError()) |err| return err;
+}
+
+fn fileExists(io: std.Io, path: []const u8) !bool {
+    var file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch |err| {
+        if (err == error.FileNotFound) return false;
+        return err;
+    };
+    defer file.close(io);
+
+    return true;
+}
+
+fn getFaillockEntries(io: std.Io, path: []const u8) !usize {
+    var file = try std.Io.Dir.openFileAbsolute(io, path, .{});
+    defer file.close(io);
+
+    var buffer: [1024]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+    var count: usize = 0;
+
+    while (!reader.atEnd()) {
+        const entry = reader.interface.takeStruct(PamFaillockEntry, .little) catch |err| {
+            if (err == error.EndOfStream) break;
+            return err;
+        };
+
+        if (entry.status & PamFaillockEntry.STATUS_VALID != 0) {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
+fn startSession(
+    log_file: *LogFile,
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    options: AuthOptions,
+    tty_str: []u8,
+    user_entry: interop.UsernameEntry,
+    handle: ?*interop.pam.pam_handle,
+    current_environment: Environment,
+) !void {
+    // Set the user's GID & PID
+    try log_file.info(io, "auth/passwd", "setting user context", .{});
+    try interop.setUserContext(allocator, user_entry);
+
+    // Set up the environment
+    try log_file.info(io, "auth/env", "setting environment variables", .{});
+    try initEnv(allocator, user_entry, options.path);
+
+    // Reset the XDG environment variables
+    try log_file.info(io, "auth/env", "resetting xdg environment variables", .{});
+    try setXdgEnv(allocator, tty_str, current_environment);
+    try setXdgRuntimeDir(allocator, io);
+
+    // Set the PAM variables
+    const pam_env_vars: ?[*:null]?[*:0]u8 = interop.pam.pam_getenvlist(handle);
+    if (pam_env_vars == null) return error.GetEnvListFailed;
+
+    const env_list = std.mem.span(pam_env_vars.?);
+    for (env_list) |maybe_env_var| {
+        if (maybe_env_var) |env_var| {
+            const env_var_slice = std.mem.span(env_var);
+            try log_file.info(io, "auth/env", "setting pam environment variable: {s}", .{env_var_slice});
+            try interop.putEnvironmentVariable(env_var_slice);
+        }
+    }
+
+    const home_z = try allocator.dupeSentinel(u8, user_entry.home.?, 0);
+    defer allocator.free(home_z);
+
+    // Change to the user's home directory
+    try log_file.info(io, "auth/sys", "changing cwd to user home", .{});
+    if (std.posix.system.chdir(home_z.ptr) < 0) return error.ChangeDirectoryFailed;
+
+    // Signal to the session process to give up control on the TTY
+    try log_file.info(io, "auth/sys", "releasing tty", .{});
+    std.posix.kill(options.session_pid, std.posix.SIG.INT) catch return error.TtyControlTransferFailed;
+
+    // Execute what the user requested
+    switch (current_environment.display_server) {
+        .wayland, .shell, .custom => try executeCmd(log_file, allocator, io, user_entry.shell.?, options, current_environment.is_terminal, current_environment.cmd),
+        .xinitrc, .x11 => if (build_options.enable_x11_support) {
+            var vt_buf: [5]u8 = undefined;
+            const vt = try std.fmt.bufPrint(&vt_buf, "vt{d}", .{options.x_vt orelse options.tty});
+
+            try log_file.info(io, "auth/x11", "setting vt to {s}", .{vt});
+            try executeX11Cmd(log_file, allocator, io, user_entry.shell.?, user_entry.home.?, options, current_environment.cmd orelse "", vt);
+        },
+    }
+}
+
+fn initEnv(allocator: std.mem.Allocator, entry: interop.UsernameEntry, path_env: ?[]const u8) !void {
+    if (entry.home) |home| {
+        try interop.setEnvironmentVariable(allocator, "HOME", home, true);
+        try interop.setEnvironmentVariable(allocator, "PWD", home, true);
+    } else return error.NoHomeDirectory;
+
+    try interop.setEnvironmentVariable(allocator, "SHELL", entry.shell.?, true);
+    try interop.setEnvironmentVariable(allocator, "USER", entry.username.?, true);
+    try interop.setEnvironmentVariable(allocator, "LOGNAME", entry.username.?, true);
+
+    if (path_env) |path| {
+        interop.setEnvironmentVariable(allocator, "PATH", path, true) catch return error.SetPathFailed;
+    }
+}
+
+fn setXdgEnv(allocator: std.mem.Allocator, tty_str: []u8, environment: Environment) !void {
+    try interop.setEnvironmentVariable(allocator, "XDG_SESSION_TYPE", switch (environment.display_server) {
+        .wayland => "wayland",
+        .shell => "tty",
+        .xinitrc, .x11 => "x11",
+        .custom => if (environment.is_terminal) "tty" else "unspecified",
+    }, false);
+
+    if (environment.xdg_desktop_names) |xdg_desktop_names| try interop.setEnvironmentVariable(allocator, "XDG_CURRENT_DESKTOP", xdg_desktop_names, false);
+    try interop.setEnvironmentVariable(allocator, "XDG_SESSION_CLASS", "user", false);
+    try interop.setEnvironmentVariable(allocator, "XDG_SESSION_ID", "1", false);
+    if (environment.xdg_session_desktop) |desktop_name| try interop.setEnvironmentVariable(allocator, "XDG_SESSION_DESKTOP", desktop_name, false);
+    try interop.setEnvironmentVariable(allocator, "XDG_SEAT", "seat0", false);
+    try interop.setEnvironmentVariable(allocator, "XDG_VTNR", tty_str, false);
+}
+
+fn setXdgRuntimeDir(allocator: std.mem.Allocator, io: std.Io) !void {
+    // The "/run/user/%d" directory is not available on some operating systems,
+    // like FreeBSD and Alpine
+    const uid = std.posix.system.getuid();
+    var uid_buffer: [32]u8 = undefined; // No UID can be larger than this
+    const uid_str = try std.fmt.bufPrint(&uid_buffer, "/run/user/{d}", .{uid});
+
+    var xdg_dir = std.Io.Dir.openDirAbsolute(io, uid_str, .{}) catch |err| {
+        if (err == error.FileNotFound) return;
+        return err;
+    };
+    xdg_dir.close(io);
+
+    try interop.setEnvironmentVariable(allocator, "XDG_RUNTIME_DIR", uid_str, false);
+}
+
+fn loginConv(
+    num_msg: c_int,
+    msg: ?[*]?*const interop.pam.pam_message,
+    resp: ?*?[*]interop.pam.pam_response,
+    appdata_ptr: ?*anyopaque,
+) callconv(.c) c_int {
+    const data: *PamAppdata = @ptrCast(@alignCast(appdata_ptr));
+    const message_count: u32 = @intCast(num_msg);
+    const messages = msg.?;
+
+    const allocator = std.heap.c_allocator;
+    const response = allocator.alloc(interop.pam.pam_response, message_count) catch return interop.pam.PAM_BUF_ERR;
+
+    // Initialise allocated memory to 0
+    // This ensures memory can be freed by pam on success
+    @memset(response, std.mem.zeroes(interop.pam.pam_response));
+
+    var username: ?[:0]u8 = null;
+    var password: ?[:0]u8 = null;
+    var status: c_int = interop.pam.PAM_SUCCESS;
+    defer {
+        if (status != interop.pam.PAM_SUCCESS) {
+            // Memory is freed by pam otherwise
+            allocator.free(response);
+            if (username) |str| allocator.free(str);
+            if (password) |str| allocator.free(str);
+        } else {
+            resp.?.* = response.ptr;
+        }
+    }
+
+    for (0..message_count) |i| set_credentials: {
+        switch (messages[i].?.msg_style) {
+            interop.pam.PAM_PROMPT_ECHO_ON => {
+                username = allocator.dupeSentinel(u8, data.username, 0) catch {
+                    status = interop.pam.PAM_BUF_ERR;
+                    break :set_credentials;
+                };
+                response[i].resp = username.?;
+            },
+            interop.pam.PAM_PROMPT_ECHO_OFF => {
+                var pass = data.password;
+                if (data.new_authtok_requested) {
+                    if (data.authreq_responded) {
+                        pass = data.new_password;
+                    }
+                    data.authreq_responded = true;
+                }
+
+                password = allocator.dupeSentinel(u8, pass, 0) catch {
+                    status = interop.pam.PAM_BUF_ERR;
+                    break :set_credentials;
+                };
+                response[i].resp = password.?;
+            },
+            interop.pam.PAM_ERROR_MSG => {
+                status = interop.pam.PAM_CONV_ERR;
+                break :set_credentials;
+            },
+            else => {},
+        }
+    }
+
+    return status;
+}
+
+fn getFreeDisplay() !u8 {
+    var buf: [15]u8 = undefined;
+    var i: u8 = 0;
+    while (i < 200) : (i += 1) {
+        const xlock = try std.fmt.bufPrintSentinel(&buf, "/tmp/.X{d}-lock", .{i}, 0);
+        if (interop.isError(std.posix.system.access(xlock.ptr, std.posix.F_OK))) break;
+    }
+    return i;
+}
+
+fn getXPid(io: std.Io, display_num: u8) !i32 {
+    var buf: [15]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&buf, "/tmp/.X{d}-lock", .{display_num});
+    const file = try std.Io.Dir.openFileAbsolute(io, file_name, .{});
+    defer file.close(io);
+
+    var file_buffer: [32]u8 = undefined;
+    var file_reader = file.reader(io, &file_buffer);
+    var reader = &file_reader.interface;
+
+    var buffer: [20]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+
+    const written = try reader.streamDelimiter(&writer, '\n');
+    return std.fmt.parseInt(i32, std.mem.trim(u8, buffer[0..written], " "), 10);
+}
+
+fn createXauthFile(log_file: *LogFile, io: std.Io, pwd: []const u8, buffer: []u8) ![]const u8 {
+    var xauth_buf: [100]u8 = undefined;
+    var xauth_dir: []const u8 = undefined;
+    const xdg_rt_dir = std.posix.system.getenv("XDG_RUNTIME_DIR");
+    var xauth_file: []const u8 = "lyxauth";
+
+    if (xdg_rt_dir == null) no_rt_dir: {
+        const xdg_cfg_home = std.posix.system.getenv("XDG_CONFIG_HOME");
+        if (xdg_cfg_home == null) no_cfg_home: {
+            xauth_dir = try std.fmt.bufPrint(&xauth_buf, "{s}/.config", .{pwd});
+
+            var dir = std.Io.Dir.cwd().openDir(io, xauth_dir, .{}) catch {
+                // xauth_dir isn't a directory
+                xauth_dir = pwd;
+                xauth_file = ".lyxauth";
+                break :no_cfg_home;
+            };
+            dir.close(io);
+
+            // xauth_dir is a directory, use it to store Xauthority
+            xauth_dir = try std.fmt.bufPrint(&xauth_buf, "{s}/.config/ly", .{pwd});
+        } else {
+            xauth_dir = try std.fmt.bufPrint(&xauth_buf, "{s}/ly", .{std.mem.span(xdg_cfg_home.?)});
+        }
+
+        const file = std.Io.Dir.cwd().openFile(io, xauth_dir, .{}) catch break :no_rt_dir;
+        file.close(io);
+
+        // xauth_dir is a file, create the parent directory
+        std.Io.Dir.createDirAbsolute(io, xauth_dir, .fromMode(777)) catch {
+            xauth_dir = pwd;
+            xauth_file = ".lyxauth";
+        };
+    } else {
+        xauth_dir = std.mem.span(xdg_rt_dir.?);
+    }
+
+    // Trim trailing slashes
+    var i = xauth_dir.len - 1;
+    while (xauth_dir[i] == '/') i -= 1;
+    const trimmed_xauth_dir = xauth_dir[0 .. i + 1];
+
+    const xauthority: []u8 = try std.fmt.bufPrint(buffer, "{s}/{s}", .{ trimmed_xauth_dir, xauth_file });
+
+    try std.Io.Dir.cwd().createDirPath(io, trimmed_xauth_dir);
+
+    try log_file.info(io, "auth/x11", "creating xauth file: {s}", .{xauthority});
+
+    const file = try std.Io.Dir.createFileAbsolute(io, xauthority, .{});
+    file.close(io);
+
+    return xauthority;
+}
+
+fn mcookie(io: std.Io) [Md5.digest_length * 2]u8 {
+    var buf: [4096]u8 = undefined;
+    io.random(&buf);
+
+    var out: [Md5.digest_length]u8 = undefined;
+    Md5.hash(&buf, &out, .{});
+
+    return std.fmt.bytesToHex(&out, .lower);
+}
+
+fn xauth(log_file: *LogFile, allocator: std.mem.Allocator, io: std.Io, display_name: []u8, shell: [*:0]const u8, home: []const u8, xauth_buffer: []u8, options: AuthOptions) ![]const u8 {
+    const xauthority = try createXauthFile(log_file, io, home, xauth_buffer);
+    try interop.setEnvironmentVariable(allocator, "XAUTHORITY", xauthority, true);
+    try interop.setEnvironmentVariable(allocator, "DISPLAY", display_name, true);
+
+    const magic_cookie = mcookie(io);
+
+    log_file.deinit(io);
+
+    const pid = std.posix.system.fork();
+    if (pid == 0) {
+        try log_file.reinit(io);
+
+        var cmd_buffer: [1024]u8 = undefined;
+        const cmd_str = std.fmt.bufPrintSentinel(&cmd_buffer, "{s} add {s} . {s}", .{ options.xauth_cmd, display_name, magic_cookie }, 0) catch std.process.exit(1);
+
+        try log_file.info(io, "auth/x11", "executing: {s} -c {s}", .{ shell, cmd_str });
+        const args = [_:null]?[*:0]const u8{ shell, "-c", cmd_str };
+        _ = std.posix.system.execve(shell, &args, std.c.environ);
+
+        log_file.deinit(io);
+        std.process.exit(1);
+    }
+
+    var status: c_int = undefined;
+    const result = std.posix.system.waitpid(pid, &status, 0);
+
+    try log_file.reinit(io);
+    if (interop.isError(result) or status != 0) {
+        try log_file.err(
+            io,
+            "auth/x11",
+            "xauth command failed with status: {d}",
+            .{status},
+        );
+        return error.XauthFailed;
+    }
+
+    return xauthority;
+}
+
+fn executeX11Cmd(log_file: *LogFile, allocator: std.mem.Allocator, io: std.Io, shell: []const u8, home: []const u8, options: AuthOptions, desktop_cmd: []const u8, vt: []const u8) !void {
+    var xauth_buffer: [256]u8 = undefined;
+
+    try log_file.info(io, "auth/x11", "getting free display", .{});
+    const display_num = try getFreeDisplay();
+    var buf: [4]u8 = undefined;
+    const display_name = try std.fmt.bufPrint(&buf, ":{d}", .{display_num});
+    try log_file.info(io, "auth/x11", "got free display: {d}", .{display_num});
+
+    const shell_z = try allocator.dupeSentinel(u8, shell, 0);
+    defer allocator.free(shell_z);
+
+    try log_file.info(io, "auth/x11", "creating xauth file", .{});
+    const xauthority = try xauth(log_file, allocator, io, display_name, shell_z, home, &xauth_buffer, options);
+
+    try log_file.info(io, "auth/x11", "starting x server", .{});
+    const pid = std.posix.system.fork();
+    if (pid == 0) {
+        var cmd_buffer: [1024]u8 = undefined;
+        const cmd_str = std.fmt.bufPrintSentinel(&cmd_buffer, "{s} {s} {s} -auth {s}", .{ options.x_cmd, display_name, vt, xauthority }, 0) catch std.process.exit(1);
+        try log_file.info(io, "auth/x11", "executing: {s} -c {s} -auth {s}", .{ shell, cmd_str, xauthority });
+
+        const args = [_:null]?[*:0]const u8{ shell_z, "-c", cmd_str };
+        _ = std.posix.system.execve(shell_z, &args, std.c.environ);
+        std.process.exit(1);
+    }
+
+    try log_file.info(io, "auth/x11", "waiting for xcb connection", .{});
+    var ok: c_int = -1;
+    var xcb: ?*interop.xcb.xcb_connection_t = null;
+    while (ok != 0) {
+        xcb = interop.xcb.xcb_connect(null, null);
+        ok = interop.xcb.xcb_connection_has_error(xcb);
+        std.posix.kill(pid, @enumFromInt(0)) catch |e| {
+            if (e == error.ProcessNotFound and ok != 0) return error.XcbConnectionFailed;
+        };
+    }
+
+    // X Server detaches from the process.
+    // PID can be fetched from /tmp/X{d}.lock
+    try log_file.info(io, "auth/x11", "getting x server pid", .{});
+    const x_pid = try getXPid(io, display_num);
+    try log_file.info(io, "auth/x11", "got x server pid: {d}", .{x_pid});
+
+    try log_file.info(io, "auth/x11", "launching environment", .{});
+    xorg_pid = std.posix.system.fork();
+    if (xorg_pid == 0) {
+        var cmd_buffer: [1024]u8 = undefined;
+        const cmd_str = std.fmt.bufPrintSentinel(&cmd_buffer, "{s} {s} {s} {s}", .{ if (options.use_kmscon_vt) "kmscon-launch-gui" else "", options.setup_cmd, options.login_cmd orelse "", desktop_cmd }, 0) catch std.process.exit(1);
+        try log_file.info(io, "auth/x11", "executing: {s} -c {s}", .{ shell, cmd_str });
+
+        const args = [_:null]?[*:0]const u8{ shell_z, "-c", cmd_str };
+        _ = std.posix.system.execve(shell_z, &args, std.c.environ);
+        std.process.exit(1);
+    }
+
+    // If we receive SIGTERM, clean up by killing the xorg_pid process
+    const act = std.posix.Sigaction{
+        .handler = .{ .handler = &xorgSignalHandler },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+
+    var xorg_status: c_int = undefined;
+    _ = std.posix.system.waitpid(xorg_pid, &xorg_status, 0);
+
+    try log_file.info(io, "auth/x11", "disconnecting xcb", .{});
+    interop.xcb.xcb_disconnect(xcb);
+
+    // TODO: Find a more robust way to ensure that X has been terminated (pidfds?)
+    std.posix.kill(x_pid, std.posix.SIG.TERM) catch {};
+    io.sleep(.fromSeconds(1), .real) catch {}; // Wait 1 second before sending SIGKILL
+    std.posix.kill(x_pid, std.posix.SIG.KILL) catch return;
+
+    var x_status: c_int = undefined;
+    _ = std.posix.system.waitpid(x_pid, &x_status, 0);
+}
+
+fn executeCmd(global_log_file: *LogFile, allocator: std.mem.Allocator, io: std.Io, shell: []const u8, options: AuthOptions, is_terminal: bool, exec_cmd: ?[]const u8) !void {
+    try global_log_file.info(io, "auth/sys", "launching wayland/shell/custom session", .{});
+
+    var maybe_log_file: ?std.Io.File = null;
+    if (!is_terminal) redirect_streams: {
+        if (options.use_kmscon_vt) {
+            try global_log_file.err(io, "auth/sys", "cannot redirect stdio & stderr with kmscon", .{});
+            break :redirect_streams;
+        }
+
+        // For custom desktop entries, the "Terminal" value here determines if
+        // we redirect standard output & error or not. That is, we redirect only
+        // if it's equal to false (so if it's not running in a TTY).
+        if (options.session_log) |log_path| {
+            try global_log_file.info(io, "auth/sys", "setting up stdio & stderr redirection", .{});
+            maybe_log_file = try redirectStandardStreams(global_log_file, io, log_path, true);
+        }
+    }
+    defer if (maybe_log_file) |log_file| log_file.close(io);
+
+    const shell_z = try allocator.dupeSentinel(u8, shell, 0);
+    defer allocator.free(shell_z);
+
+    var cmd_buffer: [1024]u8 = undefined;
+    const cmd_str = try std.fmt.bufPrintSentinel(&cmd_buffer, "{s} {s} {s} {s}", .{ if (!is_terminal and options.use_kmscon_vt) "kmscon-launch-gui" else "", options.setup_cmd, options.login_cmd orelse "", exec_cmd orelse shell }, 0);
+
+    try global_log_file.info(io, "auth/sys", "executing: {s} -c {s}", .{ shell, cmd_str });
+    const args = [_:null]?[*:0]const u8{ shell_z, "-c", cmd_str };
+    _ = std.posix.system.execve(shell_z, &args, std.c.environ);
+    return error.CmdExecveFailed;
+}
+
+fn redirectStandardStreams(global_log_file: *LogFile, io: std.Io, session_log: []const u8, create: bool) !std.Io.File {
+    create_session_log_dir: {
+        const session_log_dir = std.Io.Dir.path.dirname(session_log) orelse break :create_session_log_dir;
+
+        var buffer = std.mem.zeroes([std.Io.Dir.max_path_bytes]u8);
+        const len = std.Io.Dir.cwd().realPathFile(io, session_log_dir, &buffer) catch |err| {
+            try global_log_file.err(io, "auth/sys", "failed to resolve path for session log file directory: {s}", .{@errorName(err)});
+            return err;
+        };
+        const resolved_path = buffer[0..len];
+
+        std.Io.Dir.cwd().createDirPath(io, resolved_path) catch |err| {
+            try global_log_file.err(io, "auth/sys", "failed to create session log file directory: {s}", .{@errorName(err)});
+            return err;
+        };
+    }
+
+    const log_file = if (create) (std.Io.Dir.cwd().createFile(io, session_log, .{ .permissions = .fromMode(0o666) }) catch |err| {
+        try global_log_file.err(io, "auth/sys", "failed to create new session log file: {s}", .{@errorName(err)});
+        return err;
+    }) else (std.Io.Dir.cwd().openFile(io, session_log, .{ .mode = .read_write }) catch |err| {
+        try global_log_file.err(io, "auth/sys", "failed to open existing session log file: {s}", .{@errorName(err)});
+        return err;
+    });
+
+    if (interop.isError(std.posix.system.dup2(std.posix.STDOUT_FILENO, std.posix.STDERR_FILENO))) return error.StdoutDup2Failed;
+    if (interop.isError(std.posix.system.dup2(log_file.handle, std.posix.STDOUT_FILENO))) return error.LogFileDup2Failed;
+
+    return log_file;
+}
+
+fn addUtmpEntry(io: std.Io, entry: *Utmp, username: []const u8, pid: c_int) !void {
+    entry.ut_type = utmp.USER_PROCESS;
+    entry.ut_pid = pid;
+
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const length = try std.Io.File.stdin().realPath(io, &buf);
+    const tty_path = buf[0..length];
+
+    // Get the TTY name (i.e. without the /dev/ prefix)
+    var ttyname_buf: [@sizeOf(@TypeOf(entry.ut_line))]u8 = undefined;
+    _ = try std.fmt.bufPrintSentinel(&ttyname_buf, "{s}", .{tty_path["/dev/".len..]}, 0);
+
+    entry.ut_line = ttyname_buf;
+    // Get the TTY ID (i.e. without the tty prefix) and truncate it to the size
+    // of ut_id if necessary
+    entry.ut_id = ttyname_buf["tty".len..(@sizeOf(@TypeOf(entry.ut_id)) + "tty".len)].*;
+
+    var username_buf: [@sizeOf(@TypeOf(entry.ut_user))]u8 = undefined;
+    _ = try std.fmt.bufPrintSentinel(&username_buf, "{s}", .{username}, 0);
+
+    entry.ut_user = username_buf;
+
+    var host: [@sizeOf(@TypeOf(entry.ut_host))]u8 = undefined;
+    host[0] = 0;
+    entry.ut_host = host;
+
+    const time = try interop.getTimeOfDay();
+
+    entry.ut_tv = .{
+        .tv_sec = @intCast(time.seconds),
+        .tv_usec = @intCast(time.microseconds),
+    };
+
+    // FreeBSD doesn't have this field
+    if (builtin.os.tag == .linux) {
+        entry.ut_addr_v6[0] = 0;
+    }
+
+    utmp.setutxent();
+    _ = utmp.pututxline(entry);
+    utmp.endutxent();
+}
+
+fn removeUtmpEntry(entry: *Utmp) void {
+    entry.ut_type = utmp.DEAD_PROCESS;
+    entry.ut_line[0] = 0;
+    entry.ut_user[0] = 0;
+    utmp.setutxent();
+    _ = utmp.pututxline(entry);
+    utmp.endutxent();
+}
+
+fn pamDiagnose(status: c_int) anyerror {
+    return switch (status) {
+        interop.pam.PAM_ACCT_EXPIRED => return error.PamAccountExpired,
+        interop.pam.PAM_AUTH_ERR => return error.PamAuthError,
+        interop.pam.PAM_AUTHINFO_UNAVAIL => return error.PamAuthInfoUnavailable,
+        interop.pam.PAM_BUF_ERR => return error.PamBufferError,
+        interop.pam.PAM_CRED_ERR => return error.PamCredentialsError,
+        interop.pam.PAM_CRED_EXPIRED => return error.PamCredentialsExpired,
+        interop.pam.PAM_CRED_INSUFFICIENT => return error.PamCredentialsInsufficient,
+        interop.pam.PAM_CRED_UNAVAIL => return error.PamCredentialsUnavailable,
+        interop.pam.PAM_MAXTRIES => return error.PamMaximumTries,
+        interop.pam.PAM_NEW_AUTHTOK_REQD => return error.PamNewAuthTokenRequired,
+        interop.pam.PAM_PERM_DENIED => return error.PamPermissionDenied,
+        interop.pam.PAM_SESSION_ERR => return error.PamSessionError,
+        interop.pam.PAM_SYSTEM_ERR => return error.PamSystemError,
+        interop.pam.PAM_USER_UNKNOWN => return error.PamUserUnknown,
+        else => return error.PamAbort,
+    };
+}

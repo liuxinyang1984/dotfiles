@@ -10,7 +10,7 @@
 | [`dwm/`](dwm/) | `dwm-session` |
 | [`picom/`](picom/) | `./install.sh x11:picom` → `vendor/picom` |
 | [`rofi/`](rofi/) | `./install.sh x11:rofi` → CDE 主题 + `rofi-drun` |
-| [`ly/`](ly/) | `./install.sh x11:ly` → Ly DM + Terminus；会话 `.desktop` 由各 desktop 写入 xsessions |
+| Ly | `./install.sh x11:ly` → [`vendor/ly`](../../vendor/ly/)（自包含源码+主题）；xsessions 由各 desktop 写入 |
 | fvwm | `vendor/fvwm` → `fvwm-session` |
 
 ## 模型

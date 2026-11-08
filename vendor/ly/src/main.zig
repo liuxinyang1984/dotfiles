@@ -1,0 +1,2673 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const StringList = std.ArrayList([]const u8);
+const temporary_allocator = std.heap.page_allocator;
+const builtin = @import("builtin");
+const build_options = @import("build_options");
+
+const clap = @import("clap");
+const ly_ui = @import("ly-ui");
+const Position = ly_ui.Position;
+const BigLabel = ly_ui.BigLabel;
+const Box = ly_ui.Box;
+const Label = ly_ui.Label;
+const Text = ly_ui.Text;
+const TerminalBuffer = ly_ui.TerminalBuffer;
+const Widget = ly_ui.Widget;
+const ly_core = ly_ui.ly_core;
+const interop = ly_core.interop;
+const UidRange = ly_core.UidRange;
+const LogFile = ly_core.LogFile;
+const SharedError = ly_core.SharedError;
+const Parser = ly_core.Parser;
+const IniParser = ly_core.IniParser;
+const LuaParser = ly_core.LuaParser;
+const ini = ly_core.ini;
+const Ini = ini.Ini;
+const custom = ly_core.custom;
+
+const Cascade = @import("animations/Cascade.zig");
+const ColorMix = @import("animations/ColorMix.zig");
+const Doom = @import("animations/Doom.zig");
+const DurFile = @import("animations/DurFile.zig");
+const GameOfLife = @import("animations/GameOfLife.zig");
+const Matrix = @import("animations/Matrix.zig");
+const Lua = @import("animations/Lua.zig");
+const auth = @import("auth.zig");
+const InfoLine = @import("components/InfoLine.zig");
+const Session = @import("components/Session.zig");
+const UserList = @import("components/UserList.zig");
+const Config = @import("config/Config.zig");
+const Lang = @import("config/Lang.zig");
+const migrator = @import("config/migrator.zig");
+const OldSave = @import("config/OldSave.zig");
+const SavedUsers = @import("config/SavedUsers.zig");
+const DisplayServer = @import("enums.zig").DisplayServer;
+const Environment = @import("Environment.zig");
+const Entry = Environment.Entry;
+
+const ly_version_str = "Ly version " ++ build_options.version;
+
+var session_pid: std.posix.pid_t = -1;
+fn signalHandler(sig: std.posix.SIG) callconv(.c) void {
+    if (session_pid == 0) return;
+
+    // Forward signal to session to clean up
+    if (session_pid > 0) {
+        _ = std.c.kill(session_pid, sig);
+        var status: c_int = 0;
+        _ = std.c.waitpid(session_pid, &status, 0);
+    }
+
+    TerminalBuffer.shutdown() catch {};
+    std.c.exit(@intCast(@intFromEnum(sig)));
+}
+
+fn ttyControlTransferSignalHandler(_: std.posix.SIG) callconv(.c) void {
+    TerminalBuffer.shutdown() catch {};
+}
+
+const CustomBindLabel = struct {
+    cmd: custom.CustomCommandBind,
+    key: []const u8,
+    lbl: Label,
+    io: std.Io,
+};
+
+const CustomInfoLabel = struct {
+    info: custom.CustomCommandInfo,
+    lbl: Label,
+};
+
+const UiState = struct {
+    allocator: Allocator,
+    io: std.Io,
+    auth_fails: u64,
+    is_autologin: bool,
+    use_kmscon_vt: bool,
+    active_tty: u8,
+    buffer: TerminalBuffer,
+    labels_max_length: usize,
+    shutdown_label: Label,
+    restart_label: Label,
+    toggle_password_label: Label,
+    brightness_down_label: Label,
+    brightness_up_label: Label,
+    numlock_label: Label,
+    capslock_label: Label,
+    battery_label: Label,
+    clock_label: Label,
+    tty_label: Label,
+    session_specifier_label: Label,
+    login_label: Label,
+    password_label: Label,
+    version_label: Label,
+    bigclock_label: BigLabel,
+    box: Box,
+    info_line: InfoLine,
+    animate: bool,
+    session: Session,
+    saved_username: ?[]const u8,
+    saved_users: SavedUsers,
+    login: ?UserList,
+    login_text: ?*Text,
+    password: *Text,
+    password_widget: *Widget,
+    maybe_old_password: ?[]const u8,
+    insert_mode: bool,
+    edge_margin: Position,
+    config: Config,
+    lang: Lang,
+    log_file: LogFile,
+    save_path: []const u8,
+    old_save_path: []const u8,
+    has_old_save: bool,
+    battery_buf: [16:0]u8,
+    bigclock_format_buf: [16:0]u8,
+    clock_buf: [64:0]u8,
+    tty_buf: [8:0]u8,
+    bigclock_buf: [32:0]u8,
+    custom_binds: std.ArrayList(CustomBindLabel),
+    custom_info: std.ArrayList(CustomInfoLabel),
+    tty_cache: [std.math.maxInt(u8)]?u8,
+};
+
+var shutdown = false;
+var restart = false;
+
+pub fn main(init: std.process.Init) !void {
+    var state: UiState = undefined;
+
+    state.tty_cache = @splat(null);
+    state.io = init.io;
+
+    var stderr_buffer: [128]u8 = undefined;
+    var stderr_writer = std.Io.File.stderr().writer(state.io, &stderr_buffer);
+    var stderr = &stderr_writer.interface;
+
+    // If we can't shutdown or restart due to an error, we print it to standard error. If that fails, just bail out
+    defer {
+        if (shutdown) {
+            interop.shutdownSystem() catch std.log.err("whoopsie doodle, couldn't shutdown system!", .{});
+        } else if (restart) {
+            interop.rebootSystem() catch std.log.err("whoopsie doodle, couldn't restart system!", .{});
+        }
+    }
+
+    var gpa: std.heap.DebugAllocator(.{
+        .never_unmap = builtin.mode == .debug,
+        .retain_metadata = builtin.mode == .debug,
+    }) = .init;
+    defer if (gpa.deinit() == .leak) std.log.err("attention please, memory has been leaked!", .{});
+
+    state.allocator = gpa.allocator();
+
+    // Load arguments
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help                Shows all commands.
+        \\-v, --version             Shows the version of Ly.
+        \\-c, --config <str>        Overrides the default configuration path. Example: --config /usr/share/ly
+        \\--use-kmscon-vt           Uses KMSCON instead of the kernel VT.
+        \\--validate-config <str>   Validates the given configuration file.
+    );
+
+    var diag = clap.Diagnostic{};
+    var arg_parse_error: anyerror = undefined;
+    var maybe_res = clap.parse(clap.Help, &params, clap.parsers.default, init.minimal.args, .{ .diagnostic = &diag, .allocator = state.allocator }) catch |err| parse_error: {
+        arg_parse_error = err;
+        diag.report(stderr, err) catch {};
+        try stderr.flush();
+        break :parse_error null;
+    };
+    defer if (maybe_res) |*res| res.deinit();
+
+    var old_save_parser: ?IniParser(OldSave) = null;
+    defer if (old_save_parser) |*str| str.deinit();
+
+    state.use_kmscon_vt = false;
+
+    var start_cmd_exit_code: u8 = 0;
+
+    state.saved_users = SavedUsers.init();
+    defer state.saved_users.deinit(state.allocator);
+
+    var config_parent_path: []const u8 = build_options.config_directory ++ "/ly";
+    if (maybe_res) |*res| {
+        if (res.args.help != 0) {
+            try clap.help(stderr, clap.Help, &params, .{});
+
+            std.log.info("note: if you want to configure Ly, please check the config file, which is located at " ++ build_options.config_directory ++ "/ly/config.lua or " ++ build_options.config_directory ++ "/ly/config.ini.", .{});
+            std.process.exit(0);
+        }
+        if (res.args.version != 0) {
+            std.log.info("ly version " ++ build_options.version, .{});
+            std.process.exit(0);
+        }
+        if (res.args.config) |path| config_parent_path = path;
+        if (res.args.@"use-kmscon-vt" != 0) state.use_kmscon_vt = true;
+        if (res.args.@"validate-config") |path| {
+            var parser: Parser(Config) = blk: {
+                if (std.mem.endsWith(u8, path, ".ini")) {
+                    break :blk .{ .ini = try IniParser(Config).init(
+                        state.allocator,
+                        state.io,
+                        path,
+                        migrator.configFieldHandler,
+                    ) };
+                } else {
+                    break :blk .{ .lua = try LuaParser(Config).init(state.allocator, path) };
+                }
+            };
+            defer parser.deinit();
+
+            for (parser.errors().items) |err| {
+                std.log.err(
+                    "failed to convert value '{s}' of option '{s}' to type '{s}': {s}",
+                    .{ err.value, err.key, err.type_name, err.error_name },
+                );
+            }
+
+            if (parser.maybe_load_error()) |err| {
+                std.log.err("failed to load config file: {s}", .{@errorName(err)});
+                std.process.exit(1);
+            }
+
+            std.log.info("no errors detected!", .{});
+            std.process.exit(0);
+        }
+    }
+
+    // Load configuration file
+    defer if (state.config.save_file_dir != null) {
+        state.allocator.free(state.save_path);
+        state.allocator.free(state.old_save_path);
+    };
+
+    // Test for presence of Lua config file first
+    // If it fails, fall back to ini
+    var config_path = try std.Io.Dir.path.join(state.allocator, &[_][]const u8{ config_parent_path, "config.lua" });
+    std.Io.Dir.accessAbsolute(state.io, config_path, .{}) catch {
+        state.allocator.free(config_path);
+        config_path = try std.Io.Dir.path.join(state.allocator, &[_][]const u8{ config_parent_path, "config.ini" });
+    };
+    defer state.allocator.free(config_path);
+
+    custom.binds = .empty;
+    custom.labels = .empty;
+    var config_parser: Parser(Config) = blk: {
+        if (std.mem.endsWith(u8, config_path, ".ini")) {
+            break :blk .{ .ini = try IniParser(Config).init(
+                state.allocator,
+                state.io,
+                config_path,
+                migrator.configFieldHandler,
+            ) };
+        } else {
+            break :blk .{ .lua = try LuaParser(Config).init(state.allocator, config_path) };
+        }
+    };
+    defer config_parser.deinit();
+    defer if (!shutdown or !restart) {
+        var iter = custom.binds.iterator();
+        while (iter.next()) |i| {
+            temporary_allocator.free(i.key_ptr.*);
+            temporary_allocator.free(i.value_ptr.*.cmd);
+            temporary_allocator.free(i.value_ptr.*.name);
+        }
+        custom.binds.deinit(temporary_allocator);
+        var labelIter = custom.labels.iterator();
+        while (labelIter.next()) |i| {
+            temporary_allocator.free(i.key_ptr.*);
+            if (i.value_ptr.cmd) |cmd|
+                temporary_allocator.free(cmd);
+        }
+        custom.labels.deinit(temporary_allocator);
+    };
+
+    state.config = config_parser.structure();
+
+    var lang_buffer: [16]u8 = undefined;
+    const lang_file = try std.fmt.bufPrint(&lang_buffer, "{s}.ini", .{state.config.lang});
+
+    const lang_path = try std.Io.Dir.path.join(state.allocator, &[_][]const u8{ config_parent_path, "lang", lang_file });
+    defer state.allocator.free(lang_path);
+
+    var lang_parser = try IniParser(Lang).init(state.allocator, state.io, lang_path, null);
+    defer lang_parser.deinit();
+
+    state.lang = lang_parser.structure;
+
+    if (state.config.save_file_dir) |dir| {
+        state.save_path = try std.Io.Dir.path.join(state.allocator, &[_][]const u8{ dir, "save.txt" });
+        state.old_save_path = try std.Io.Dir.path.join(state.allocator, &[_][]const u8{ config_parent_path, "save.ini" });
+    }
+
+    if (config_parser.maybe_load_error() == null and config_parser == .ini) {
+        migrator.lateConfigFieldHandler(&state.config, state.lang);
+    }
+
+    var maybe_uid_range_error: ?anyerror = null;
+    var usernames = try getAllUsernames(state.allocator, state.io, state.config.login_defs_path, &maybe_uid_range_error);
+    defer {
+        for (usernames.items) |username| state.allocator.free(username);
+        usernames.deinit(state.allocator);
+    }
+
+    state.has_old_save = false;
+    state.saved_username = null;
+
+    if (state.config.save_file_dir != null) read_save_file: {
+        old_save_parser = migrator.tryMigrateIniSaveFile(state.allocator, state.io, state.old_save_path, &state.saved_users, usernames.items) catch break :read_save_file;
+
+        // Don't read the new save file if the old one still exists
+        if (old_save_parser != null) {
+            state.has_old_save = true;
+            break :read_save_file;
+        }
+
+        var save_file = std.Io.Dir.cwd().openFile(state.io, state.save_path, .{}) catch break :read_save_file;
+        defer save_file.close(state.io);
+
+        var file_buffer: [256]u8 = undefined;
+        var file_reader = save_file.reader(state.io, &file_buffer);
+        var reader = &file_reader.interface;
+
+        const username_line = reader.takeDelimiterInclusive('\n') catch break :read_save_file;
+
+        if (std.mem.containsAtLeastScalar(u8, username_line, '-', 1)) read_username: {
+            var iterator = std.mem.splitScalar(u8, username_line[0..(username_line.len - 1)], '-');
+            if (iterator.next() == null) break :read_username; // Would be index
+
+            const maybe_username = iterator.next();
+            if (maybe_username) |username| {
+                state.saved_username = try state.allocator.dupe(u8, username);
+            }
+        } else if (!state.config.type_username) {
+            state.saved_users.last_username_index = std.fmt.parseInt(usize, username_line[0..(username_line.len - 1)], 10) catch break :read_save_file;
+        }
+
+        while (reader.seek < reader.buffer.len) {
+            var line = reader.takeDelimiterInclusive('\n') catch break;
+            if (std.mem.startsWith(u8, line, "ly/tty")) continue;
+
+            var user = std.mem.splitScalar(u8, line[0..(line.len - 1)], ':');
+            const username = user.next() orelse continue;
+            const session_index_str = user.next() orelse continue;
+
+            const session_index = std.fmt.parseInt(usize, session_index_str, 10) catch continue;
+
+            try state.saved_users.user_list.append(state.allocator, .{
+                .username = try state.allocator.dupe(u8, username),
+                .session_index = session_index,
+                .first_run = false,
+                .allocated_username = true,
+            });
+        }
+
+        updateTtyCache(&state, .{ .usernames = usernames.items }) catch break :read_save_file;
+    }
+
+    var log_file_buffer: [1024]u8 = undefined;
+
+    state.log_file = try LogFile.init(state.io, state.config.ly_log, &log_file_buffer);
+    defer state.log_file.deinit(state.io);
+
+    try state.log_file.info(state.io, "tui", "using {s} vt", .{if (state.use_kmscon_vt) "kmscon" else "default"});
+
+    if (state.config.start_cmd) |start_cmd| handle_start_cmd: {
+        var process = std.process.spawn(state.io, .{
+            .argv = &[_][]const u8{ "/bin/sh", "-c", start_cmd },
+            .stdout = .inherit,
+            .stderr = .ignore,
+        }) catch {
+            break :handle_start_cmd;
+        };
+
+        const process_result = process.wait(state.io) catch {
+            break :handle_start_cmd;
+        };
+        start_cmd_exit_code = process_result.exited;
+    }
+
+    // Initialize terminal buffer
+    try state.log_file.info(state.io, "tui", "initializing terminal buffer", .{});
+    var labels = [_][]const u8{
+        state.lang.login,
+        state.lang.password,
+        state.lang.wayland,
+        state.lang.x11,
+        state.lang.shell,
+        state.lang.xinitrc,
+        state.lang.custom,
+    };
+    state.labels_max_length = maxWidths(&labels);
+
+    var seed: u64 = undefined;
+    state.io.random(std.mem.asBytes(&seed)); // Get a random seed for the PRNG (used by animations)
+
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+
+    const buffer_options = TerminalBuffer.InitOptions{
+        .fg = state.config.fg,
+        .bg = state.config.bg,
+        .border_fg = state.config.border_fg,
+        .full_color = state.config.full_color,
+        .is_tty = true,
+    };
+    state.buffer = try TerminalBuffer.init(
+        state.allocator,
+        state.io,
+        buffer_options,
+        &state.log_file,
+        random,
+    );
+    defer {
+        state.log_file.info(state.io, "tui", "shutting down terminal buffer", .{}) catch {};
+        state.buffer.deinit();
+    }
+
+    const act = std.posix.Sigaction{
+        .handler = .{ .handler = &signalHandler },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+
+    // Initialize components
+    state.shutdown_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.shutdown_label.deinit();
+
+    state.restart_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.restart_label.deinit();
+
+    state.toggle_password_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.toggle_password_label.deinit();
+
+    state.brightness_down_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.brightness_down_label.deinit();
+
+    state.brightness_up_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.brightness_up_label.deinit();
+
+    if (state.config.shutdown_key) |key| {
+        try state.shutdown_label.setTextAlloc(
+            state.allocator,
+            "{s} {s}",
+            .{ key, state.lang.shutdown },
+        );
+    }
+    if (state.config.restart_key) |key| {
+        try state.restart_label.setTextAlloc(
+            state.allocator,
+            "{s} {s}",
+            .{ key, state.lang.restart },
+        );
+    }
+    if (state.config.show_password_key) |key| {
+        try state.toggle_password_label.setTextAlloc(
+            state.allocator,
+            "{s} {s}",
+            .{ key, state.lang.toggle_password },
+        );
+    }
+    if (state.config.brightness_down_key) |key| {
+        try state.brightness_down_label.setTextAlloc(
+            state.allocator,
+            "{s} {s}",
+            .{ key, state.lang.brightness_down },
+        );
+    }
+    if (state.config.brightness_up_key) |key| {
+        try state.brightness_up_label.setTextAlloc(
+            state.allocator,
+            "{s} {s}",
+            .{ key, state.lang.brightness_up },
+        );
+    }
+
+    state.numlock_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateNumlock,
+        null,
+    );
+    defer state.numlock_label.deinit();
+
+    state.capslock_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateCapslock,
+        null,
+    );
+    defer state.capslock_label.deinit();
+
+    state.battery_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateBattery,
+        null,
+    );
+    defer state.battery_label.deinit();
+
+    state.clock_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateClock,
+        &calculateClockTimeout,
+    );
+    defer state.clock_label.deinit();
+
+    state.tty_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.tty_label.deinit();
+
+    state.bigclock_label = BigLabel.init(
+        &state.buffer,
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        state.config.bigclock_outline_fg,
+        switch (state.config.bigclock) {
+            .none, .en => .en,
+            .fa => .fa,
+        },
+        &updateBigClock,
+        &calculateBigClockTimeout,
+    );
+    defer state.bigclock_label.deinit();
+
+    state.box = Box.init(
+        &state.buffer,
+        state.config.margin_box_h,
+        state.config.margin_box_v,
+        (2 * state.config.margin_box_h) + state.config.input_len + 1 + state.labels_max_length,
+        7 + (2 * state.config.margin_box_v),
+        !state.config.hide_borders,
+        state.config.blank_box,
+        state.config.box_title,
+        null,
+        state.buffer.border_fg,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateBox,
+    );
+
+    state.info_line = try InfoLine.init(
+        state.allocator,
+        state.io,
+        &state.buffer,
+        state.box.width - 2 * state.box.horizontal_margin,
+        state.buffer.fg,
+        state.buffer.bg,
+    );
+    defer state.info_line.deinit();
+
+    try state.buffer.registerKeybind(state.io, &state.info_line.label.keybinds, "H", &viGoLeft, &state);
+    try state.buffer.registerKeybind(state.io, &state.info_line.label.keybinds, "L", &viGoRight, &state);
+
+    if (maybe_res == null) {
+        var longest = diag.name.longest();
+        if (longest.kind == .positional)
+            longest.name = diag.arg;
+
+        try state.info_line.addMessage(
+            state.lang.err_args,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "cli",
+            "unable to parse argument '{s}{s}': {s}",
+            .{ longest.kind.prefix(), longest.name, @errorName(arg_parse_error) },
+        );
+    }
+
+    if (maybe_uid_range_error) |err| {
+        try state.info_line.addMessage(
+            state.lang.err_uid_range,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to get uid range: {s}; falling back to default",
+            .{@errorName(err)},
+        );
+    }
+
+    if (start_cmd_exit_code != 0) {
+        try state.info_line.addMessage(
+            state.lang.err_start,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to execute start command: exit code {d}",
+            .{start_cmd_exit_code},
+        );
+    }
+
+    if (config_parser.maybe_load_error()) |load_error| {
+        // We can't localize this since the config failed to load so we'd fallback to the default language anyway
+        try state.info_line.addMessage(
+            "unable to parse config file",
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "conf",
+            "unable to parse config file: {s}",
+            .{@errorName(load_error)},
+        );
+
+        for (config_parser.errors().items) |err| {
+            try state.log_file.err(
+                state.io,
+                "conf",
+                "failed to convert value '{s}' of option '{s}' to type '{s}': {s}",
+                .{ err.value, err.key, err.type_name, err.error_name },
+            );
+        }
+    }
+
+    if (!state.log_file.could_open_log_file) {
+        try state.info_line.addMessage(
+            state.lang.err_log,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to open log file",
+            .{},
+        );
+    }
+
+    interop.setNumlock(state.config.numlock) catch |err| {
+        try state.info_line.addMessage(
+            state.lang.err_numlock,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to set numlock: {s}",
+            .{@errorName(err)},
+        );
+    };
+
+    state.session_specifier_label = Label.init(
+        "",
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        &updateSessionSpecifier,
+        null,
+    );
+    defer state.session_specifier_label.deinit();
+
+    state.session = try Session.init(
+        state.allocator,
+        state.io,
+        &state.buffer,
+        &state.login,
+        state.box.width - 2 * state.box.horizontal_margin - state.labels_max_length - 1,
+        state.config.text_in_center,
+        state.buffer.fg,
+        state.buffer.bg,
+    );
+    defer state.session.deinit();
+
+    try state.buffer.registerKeybind(state.io, &state.session.label.keybinds, "H", &viGoLeft, &state);
+    try state.buffer.registerKeybind(state.io, &state.session.label.keybinds, "L", &viGoRight, &state);
+
+    state.login_label = Label.init(
+        state.lang.login,
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.login_label.deinit();
+
+    state.login = null;
+    if (!state.config.type_username) {
+        state.login = try UserList.init(
+            state.allocator,
+            state.io,
+            &state.buffer,
+            usernames,
+            &state.saved_users,
+            &state.session,
+            state.box.width - 2 * state.box.horizontal_margin - state.labels_max_length - 1,
+            state.config.text_in_center,
+            state.buffer.fg,
+            state.buffer.bg,
+        );
+
+        try state.buffer.registerKeybind(state.io, &state.login.?.label.keybinds, "H", &viGoLeft, &state);
+        try state.buffer.registerKeybind(state.io, &state.login.?.label.keybinds, "L", &viGoRight, &state);
+    }
+    defer if (state.login) |*w| w.deinit();
+
+    if (state.config.shell) {
+        addOtherEnvironment(&state.session, state.lang, .shell, null) catch |err| {
+            try state.info_line.addMessage(
+                state.lang.err_alloc,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "sys",
+                "failed to add shell environment: {s}",
+                .{@errorName(err)},
+            );
+        };
+    }
+
+    if (build_options.enable_x11_support) {
+        if (state.config.xinitrc) |xinitrc_cmd| {
+            addOtherEnvironment(&state.session, state.lang, .xinitrc, xinitrc_cmd) catch |err| {
+                try state.info_line.addMessage(
+                    state.lang.err_alloc,
+                    state.config.error_bg,
+                    state.config.error_fg,
+                );
+                try state.log_file.err(
+                    state.io,
+                    "sys",
+                    "failed to add xinitrc environment: {s}",
+                    .{@errorName(err)},
+                );
+            };
+        }
+    } else {
+        try state.info_line.addMessage(
+            state.lang.no_x11_support,
+            state.config.bg,
+            state.config.fg,
+        );
+        try state.log_file.info(
+            state.io,
+            "comp",
+            "x11 support disabled at compile-time",
+            .{},
+        );
+    }
+
+    var has_crawl_error = false;
+
+    // Crawl session directories (Wayland, X11 and custom respectively)
+    if (state.config.waylandsessions) |waylandsessions| {
+        var wayland_session_dirs = std.mem.splitScalar(u8, waylandsessions, ':');
+        while (wayland_session_dirs.next()) |dir| {
+            crawl(&state.session, state.io, state.lang, dir, .wayland) catch |err| {
+                has_crawl_error = true;
+                try state.log_file.err(
+                    state.io,
+                    "sys",
+                    "failed to crawl wayland session directory '{s}': {s}",
+                    .{ dir, @errorName(err) },
+                );
+            };
+        }
+    }
+
+    if (build_options.enable_x11_support) {
+        if (state.config.xsessions) |xsessions| {
+            var x_session_dirs = std.mem.splitScalar(u8, xsessions, ':');
+            while (x_session_dirs.next()) |dir| {
+                crawl(&state.session, state.io, state.lang, dir, .x11) catch |err| {
+                    has_crawl_error = true;
+                    try state.log_file.err(
+                        state.io,
+                        "sys",
+                        "failed to crawl x11 session directory '{s}': {s}",
+                        .{ dir, @errorName(err) },
+                    );
+                };
+            }
+        }
+    }
+
+    var custom_session_dirs = std.mem.splitScalar(u8, state.config.custom_sessions, ':');
+    while (custom_session_dirs.next()) |dir| {
+        crawl(&state.session, state.io, state.lang, dir, .custom) catch |err| {
+            has_crawl_error = true;
+            try state.log_file.err(
+                state.io,
+                "sys",
+                "failed to crawl custom session directory '{s}': {s}",
+                .{ dir, @errorName(err) },
+            );
+        };
+    }
+
+    if (has_crawl_error) {
+        try state.info_line.addMessage(
+            state.lang.err_crawl,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+    }
+
+    if (usernames.items.len == 0) {
+        // If we have no usernames, simply add an error to the info line.
+        // This effectively means you can't login, since there would be no local
+        // accounts *and* no root account...but at this point, if that's the
+        // case, you have bigger problems to deal with in the first place. :D
+        if (!state.config.type_username) try state.info_line.addMessage(state.lang.err_no_users, state.config.error_bg, state.config.error_fg);
+        try state.log_file.err(state.io, "sys", "no users found", .{});
+    }
+
+    state.password_label = Label.init(
+        state.lang.password,
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.password_label.deinit();
+
+    state.maybe_old_password = null;
+    defer if (state.maybe_old_password) |pass| state.allocator.free(pass);
+
+    state.insert_mode = !state.config.vi_mode or state.config.vi_default_mode == .insert;
+
+    state.password = try Text.init(
+        state.allocator,
+        state.io,
+        &state.buffer,
+        state.insert_mode,
+        true,
+        state.config.asterisk,
+        state.box.width - 2 * state.box.horizontal_margin - state.labels_max_length - 1,
+        state.buffer.fg,
+        state.buffer.bg,
+    );
+    defer state.password.deinit();
+
+    try state.buffer.registerKeybind(state.io, &state.password.keybinds, "H", &viGoLeft, &state);
+    try state.buffer.registerKeybind(state.io, &state.password.keybinds, "L", &viGoRight, &state);
+
+    state.password_widget = state.password.widget();
+    state.login_text = null;
+
+    if (state.config.type_username) {
+        state.login_text = try Text.init(
+            state.allocator,
+            state.io,
+            &state.buffer,
+            state.insert_mode,
+            false,
+            null,
+            state.box.width - 2 * state.box.horizontal_margin - state.labels_max_length - 1,
+            state.buffer.fg,
+            state.buffer.bg,
+        );
+    }
+    defer if (state.login_text) |lt| lt.deinit();
+
+    state.version_label = Label.init(
+        ly_version_str,
+        null,
+        state.buffer.fg,
+        state.buffer.bg,
+        null,
+        null,
+    );
+    defer state.version_label.deinit();
+
+    state.is_autologin = false;
+
+    check_autologin: {
+        const auto_user = state.config.auto_login_user orelse break :check_autologin;
+        const auto_session = state.config.auto_login_session orelse break :check_autologin;
+
+        if (!isValidUsername(auto_user, usernames)) {
+            try state.info_line.addMessage(
+                state.lang.err_pam_user_unknown,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "auth",
+                "autologin failed: username '{s}' not found",
+                .{auto_user},
+            );
+            break :check_autologin;
+        }
+
+        const session_index = findSessionByName(&state.session, auto_session) orelse {
+            try state.log_file.err(
+                state.io,
+                "auth",
+                "autologin failed: session '{s}' not found",
+                .{auto_session},
+            );
+            try state.info_line.addMessage(
+                state.lang.err_autologin_session,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            break :check_autologin;
+        };
+        try state.log_file.info(
+            state.io,
+            "auth",
+            "attempting autologin for user '{s}' with session '{s}'",
+            .{ auto_user, auto_session },
+        );
+
+        state.session.label.current = session_index;
+        state.is_autologin = true;
+
+        if (state.login_text) |box| {
+            try box.writeText(auto_user);
+        } else {
+            for (state.login.?.label.list.items, 0..) |username, i| {
+                if (std.mem.eql(u8, username.name, auto_user)) {
+                    state.login.?.label.current = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Switch to selected TTY
+    state.active_tty = interop.getActiveTty(state.allocator, state.io, state.use_kmscon_vt) catch |err| no_tty_found: {
+        try state.info_line.addMessage(
+            state.lang.err_get_active_tty,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to get active tty: {s}",
+            .{@errorName(err)},
+        );
+        break :no_tty_found build_options.fallback_tty;
+    };
+    if (!state.use_kmscon_vt) switch_tty: {
+        if (state.config.grab_focus_tty) |tty| {
+            if (tty != state.active_tty) break :switch_tty;
+        }
+        interop.switchTty(state.active_tty) catch |err| {
+            try state.info_line.addMessage(
+                state.lang.err_switch_tty,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "sys",
+                "failed to switch to tty {d}: {s}",
+                .{ state.active_tty, @errorName(err) },
+            );
+        };
+    }
+
+    try state.tty_label.setTextBuf(&state.tty_buf, "tty{d}", .{state.active_tty});
+
+    // Initialize the animation, if any
+    var animation: ?*Widget = null;
+    switch (state.config.animation) {
+        .none => {},
+        .doom => {
+            var doom = try Doom.init(
+                state.allocator,
+                &state.buffer,
+                state.config.doom_top_color,
+                state.config.doom_middle_color,
+                state.config.doom_bottom_color,
+                state.config.doom_fire_height,
+                state.config.doom_fire_spread,
+                &state.animate,
+                state.config.animation_timeout_sec,
+                state.config.animation_frame_delay,
+            );
+            animation = doom.widget();
+        },
+        .matrix => {
+            var matrix = try Matrix.init(
+                state.allocator,
+                &state.buffer,
+                state.config.cmatrix_fg,
+                state.config.cmatrix_head_col,
+                state.config.cmatrix_min_codepoint,
+                state.config.cmatrix_max_codepoint,
+                &state.animate,
+                state.config.animation_timeout_sec,
+                state.config.animation_frame_delay,
+            );
+            animation = matrix.widget();
+        },
+        .colormix => {
+            var color_mix = try ColorMix.init(
+                &state.buffer,
+                state.config.colormix_col1,
+                state.config.colormix_col2,
+                state.config.colormix_col3,
+                &state.animate,
+                state.config.animation_timeout_sec,
+                state.config.animation_frame_delay,
+            );
+            animation = color_mix.widget();
+        },
+        .gameoflife => {
+            var game_of_life = try GameOfLife.init(
+                state.allocator,
+                &state.buffer,
+                state.config.gameoflife_fg,
+                state.config.gameoflife_entropy_interval,
+                state.config.gameoflife_frame_delay,
+                state.config.gameoflife_initial_density,
+                &state.animate,
+                state.config.animation_timeout_sec,
+                state.config.animation_frame_delay,
+                state.config.gameoflife_param_survival,
+                state.config.gameoflife_param_birth,
+            );
+            animation = game_of_life.widget();
+        },
+        .dur => {
+            var dur = try DurFile.init(
+                state.allocator,
+                state.io,
+                &state.buffer,
+                &state.log_file,
+                state.config.dur_file_path,
+                state.config.dur_offset_alignment,
+                state.config.dur_x_offset,
+                state.config.dur_y_offset,
+                state.config.full_color,
+                &state.animate,
+                state.config.animation_timeout_sec,
+                state.config.animation_frame_delay,
+            );
+            animation = dur.widget();
+        },
+        .lua => {
+            var lua = try Lua.init(
+                state.io,
+                state.allocator,
+                &state.log_file,
+                &state.buffer,
+                state.config.lua_animation_file,
+                state.config.edge_margin,
+                state.config.animation_frame_delay,
+                &state.info_line,
+                state.config.error_fg,
+                state.config.error_bg,
+                state.lang,
+                state.config.full_color,
+            );
+            animation = lua.widget();
+        },
+    }
+    defer if (animation) |a| a.deinit();
+
+    var cascade = Cascade.init(
+        state.io,
+        &state.buffer,
+        &state.auth_fails,
+        state.config.auth_fails,
+    );
+
+    state.auth_fails = 0;
+    state.animate = state.config.animation != .none;
+    state.edge_margin = Position.init(
+        state.config.edge_margin,
+        state.config.edge_margin,
+    );
+
+    // Load last saved username and desktop selection, if any
+    // Skip if autologin is active to prevent overriding autologin session
+    var default_input = state.config.default_input;
+
+    const min_session_index = if (state.session.label.list.items.len == 0) 0 else state.session.label.list.items.len - 1;
+
+    if (state.config.save_file_dir != null and !state.is_autologin) {
+        if (state.login_text) |box| {
+            if (state.saved_username) |username| {
+                defer state.allocator.free(username);
+
+                try box.writeText(username);
+
+                default_input = .password;
+
+                for (state.saved_users.user_list.items) |user| {
+                    if (std.mem.eql(u8, username, user.username)) {
+                        state.session.label.current = @min(user.session_index, min_session_index);
+                        break;
+                    }
+                }
+            }
+        } else if (state.tty_cache[state.active_tty]) |user_index| {
+            const user_session_index = state.login.?.label.list.items[user_index].session_index.*;
+
+            state.login.?.label.current = user_index;
+            state.session.label.current = @min(user_session_index, min_session_index);
+        } else if (state.saved_users.last_username_index) |last_user_index| load_last_user: {
+            const saved_users = state.saved_users.user_list.items;
+
+            // If the saved index isn't valid, bail out
+            if (last_user_index >= saved_users.len) break :load_last_user;
+
+            const user = saved_users[last_user_index];
+
+            // Find user with saved name, and switch over to it
+            // If it doesn't exist (anymore), we don't change the value
+            for (usernames.items, 0..) |username, i| {
+                if (std.mem.eql(u8, username, user.username)) {
+                    state.login.?.label.current = i;
+                    break;
+                }
+            }
+
+            default_input = .password;
+
+            state.session.label.current = @min(user.session_index, min_session_index);
+        }
+    }
+
+    const info_line_widget = state.info_line.widget();
+    const session_widget = state.session.widget();
+    const login_widget = if (state.config.type_username) state.login_text.?.widget() else state.login.?.widget();
+
+    var widgets: std.ArrayList([]*Widget) = .empty;
+    defer widgets.deinit(state.allocator);
+
+    // Layer 1
+    if (animation) |a| {
+        var layer1 = [_]*Widget{a};
+        try widgets.append(state.allocator, &layer1);
+    }
+
+    // Layer 2
+    var layer2: std.ArrayList(*Widget) = .empty;
+    defer layer2.deinit(state.allocator);
+
+    state.custom_binds = .empty;
+    defer state.custom_binds.deinit(state.allocator);
+    defer for (state.custom_binds.items) |*i| {
+        i.lbl.deinit();
+    };
+
+    state.custom_info = .empty;
+    defer state.custom_info.deinit(state.allocator);
+    defer for (state.custom_info.items) |*item| {
+        item.lbl.deinit();
+    };
+
+    var lblIter = custom.labels.iterator();
+    // NOTE: Because widgets have a pointer to the underlying Label, we have to ensure
+    // that the ArrayList doesn't allocate more memory than what we ensured. Otherwise
+    // the pointer to the Label becomes invalid.
+    try state.custom_info.ensureTotalCapacity(state.allocator, @intCast(custom.labels.count()));
+    while (lblIter.next()) |i| {
+        try state.custom_info.append(state.allocator, .{
+            .info = i.value_ptr.*,
+            .lbl = .init("", null, state.buffer.fg, state.buffer.bg, updateCustomInfo, null),
+        });
+        var latest = &state.custom_info.items[state.custom_info.items.len - 1];
+        latest.info.id = latest.lbl.widget().id;
+        latest.info.counter = 1;
+    }
+
+    var iter = custom.binds.iterator();
+    while (iter.next()) |i| {
+        var concat = try std.mem.concat(state.allocator, u8, &[_][]const u8{ i.key_ptr.*, " ", i.value_ptr.name });
+        inline for (@typeInfo(Lang).@"struct".field_names) |lang_key| {
+            const new = try std.mem.replaceOwned(u8, state.allocator, concat, "$" ++ lang_key, @field(state.lang, lang_key));
+            state.allocator.free(concat);
+            concat = new;
+        }
+        try state.custom_binds.append(state.allocator, .{
+            .lbl = .init(
+                concat,
+                null,
+                state.buffer.fg,
+                state.buffer.bg,
+                null,
+                null,
+            ),
+            .cmd = i.value_ptr.*,
+            .key = i.key_ptr.*,
+            .io = state.io,
+        });
+        state.custom_binds.items[state.custom_binds.items.len - 1].lbl.allocator = state.allocator;
+    }
+    try layer2.append(state.allocator, state.shutdown_label.widget());
+    try layer2.append(state.allocator, state.restart_label.widget());
+    try layer2.append(state.allocator, state.toggle_password_label.widget());
+    try layer2.append(state.allocator, state.brightness_down_label.widget());
+    try layer2.append(state.allocator, state.brightness_up_label.widget());
+    try layer2.append(state.allocator, state.battery_label.widget());
+    try layer2.append(state.allocator, state.clock_label.widget());
+    try layer2.append(state.allocator, state.tty_label.widget());
+    try layer2.append(state.allocator, state.bigclock_label.widget());
+    try layer2.append(state.allocator, state.numlock_label.widget());
+    try layer2.append(state.allocator, state.capslock_label.widget());
+    try layer2.append(state.allocator, state.box.widget());
+    try layer2.append(state.allocator, info_line_widget);
+    try layer2.append(state.allocator, state.session_specifier_label.widget());
+    try layer2.append(state.allocator, session_widget);
+    try layer2.append(state.allocator, state.login_label.widget());
+    try layer2.append(state.allocator, login_widget);
+    try layer2.append(state.allocator, state.password_label.widget());
+    try layer2.append(state.allocator, state.password_widget);
+    try layer2.append(state.allocator, state.version_label.widget());
+
+    for (state.custom_binds.items) |*item| {
+        try layer2.append(state.allocator, item.lbl.widget());
+    }
+    for (state.custom_info.items) |*item| {
+        try layer2.append(state.allocator, item.lbl.widget());
+    }
+
+    try widgets.append(state.allocator, layer2.items);
+
+    // Layer 3
+    if (state.config.auth_fails > 0) {
+        var layer3 = [_]*Widget{cascade.widget()};
+        try widgets.append(state.allocator, &layer3);
+    }
+
+    for (state.custom_binds.items) |*item| {
+        try state.buffer.registerGlobalKeybind(state.io, item.key, &customCommand, item);
+    }
+
+    try state.buffer.registerGlobalKeybind(state.io, "Esc", &disableInsertMode, &state);
+    try state.buffer.registerGlobalKeybind(state.io, "I", &enableInsertMode, &state);
+
+    try state.buffer.registerGlobalKeybind(state.io, "Ctrl+C", &quit, &state);
+
+    try state.buffer.registerGlobalKeybind(state.io, "K", &viMoveCursorUp, &state);
+    try state.buffer.registerGlobalKeybind(state.io, "J", &viMoveCursorDown, &state);
+
+    try state.buffer.registerGlobalKeybind(state.io, "Enter", &authenticate, &state);
+
+    if (state.config.shutdown_key) |key| try state.buffer.registerGlobalKeybind(state.io, key, &shutdownCmd, &state);
+    if (state.config.restart_key) |key| try state.buffer.registerGlobalKeybind(state.io, key, &restartCmd, &state);
+    if (state.config.show_password_key) |key| try state.buffer.registerGlobalKeybind(state.io, key, &togglePasswordMask, &state);
+    if (state.config.brightness_down_key) |key| try state.buffer.registerGlobalKeybind(state.io, key, &decreaseBrightnessCmd, &state);
+    if (state.config.brightness_up_key) |key| try state.buffer.registerGlobalKeybind(state.io, key, &increaseBrightnessCmd, &state);
+
+    // initial_info_text: null/空→不显示（ini 空值会变 null，故不再回退 hostname）
+    if (state.config.initial_info_text) |text| {
+        if (text.len > 0) {
+            try state.info_line.addMessage(text, state.config.bg, state.config.fg);
+        }
+    }
+
+    if (state.is_autologin) _ = try authenticate(&state);
+
+    const active_widget = switch (default_input) {
+        .info_line => info_line_widget,
+        .session => session_widget,
+        .login => login_widget,
+        .password => state.password_widget,
+    };
+
+    var shared_error = try SharedError.init(&uiErrorHandler, &state);
+    defer shared_error.deinit();
+
+    try state.buffer.runEventLoop(
+        state.allocator,
+        state.io,
+        shared_error,
+        widgets.items,
+        active_widget,
+        state.config.inactivity_delay,
+        positionWidgets,
+        handleInactivity,
+        &state,
+    );
+}
+
+fn maxWidths(labels: [][]const u8) usize {
+    var max_width: usize = 0;
+
+    for (labels) |label| {
+        max_width = @max(max_width, TerminalBuffer.strWidth(label));
+    }
+
+    return max_width;
+}
+
+fn uiErrorHandler(err: anyerror, ctx: *anyopaque) anyerror!void {
+    var state: *UiState = @ptrCast(@alignCast(ctx));
+
+    switch (err) {
+        error.SetCursorFailed => {
+            try state.info_line.addMessage(
+                state.lang.err_alloc,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+        },
+        error.WidgetReallocationFailed => {
+            try state.info_line.addMessage(
+                state.lang.err_alloc,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+        },
+        error.CurrentWidgetHandlingFailed => {
+            try state.info_line.addMessage(
+                state.lang.err_alloc,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+        },
+        else => unreachable,
+    }
+}
+
+fn disableInsertMode(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.config.vi_mode and state.insert_mode) {
+        state.insert_mode = false;
+        state.password.should_insert = false;
+        if (state.login_text) |lt| lt.should_insert = false;
+        state.buffer.drawNextFrame(true);
+    }
+    return false;
+}
+
+fn enableInsertMode(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+    if (state.insert_mode) return true;
+
+    state.insert_mode = true;
+    state.password.should_insert = true;
+    if (state.login_text) |lt| lt.should_insert = true;
+    state.buffer.drawNextFrame(true);
+    return false;
+}
+
+fn viGoLeft(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+    if (state.insert_mode) return true;
+
+    return try state.buffer.simulateKeybind(state.io, "Left");
+}
+
+fn viGoRight(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+    if (state.insert_mode) return true;
+
+    return try state.buffer.simulateKeybind(state.io, "Right");
+}
+
+fn viMoveCursorUp(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+    if (state.insert_mode) return true;
+
+    return try state.buffer.simulateKeybind(state.io, "Up");
+}
+
+fn viMoveCursorDown(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+    if (state.insert_mode) return true;
+
+    return try state.buffer.simulateKeybind(state.io, "Down");
+}
+
+fn togglePasswordMask(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    state.password.toggleMask();
+    state.buffer.drawNextFrame(true);
+    return false;
+}
+
+fn quit(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    state.buffer.stopEventLoop();
+    return false;
+}
+
+fn customCommand(ptr: *anyopaque) !bool {
+    const lbl: *CustomBindLabel = @ptrCast(@alignCast(ptr));
+    var proc = std.process.spawn(lbl.io, .{
+        .argv = &[_][]const u8{ "/bin/sh", "-c", lbl.cmd.cmd },
+        .stdout = .ignore,
+        .stderr = .ignore,
+    }) catch return false;
+
+    const res = proc.wait(lbl.io) catch return false;
+    if (res.exited != 0) return error.CommandFailed;
+    return false;
+}
+
+fn authenticate(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    try state.log_file.info(state.io, "auth", "starting authentication", .{});
+
+    if (!state.config.allow_empty_password and state.password.text.items.len == 0) {
+        // Let's not log this message for security reasons
+        try state.info_line.addMessage(
+            state.lang.err_empty_password,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        return false;
+    }
+
+    try state.info_line.addMessage(
+        state.lang.authenticating,
+        state.config.bg,
+        state.config.fg,
+    );
+    if (!state.is_autologin) {
+        state.info_line.clearRendered(state.allocator) catch |err| {
+            try state.info_line.addMessage(
+                state.lang.err_alloc,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "tui",
+                "failed to clear info line: {s}",
+                .{@errorName(err)},
+            );
+        };
+        state.info_line.label.draw();
+        try TerminalBuffer.presentBuffer();
+    }
+
+    if (state.config.save_file_dir != null) save_last_settings: {
+        // It isn't worth cluttering the code with precise error
+        // handling, so let's just report a generic error message,
+        // that should be good enough for debugging anyway.
+        errdefer state.log_file.err(
+            state.io,
+            "conf",
+            "failed to save current user data",
+            .{},
+        ) catch {};
+
+        const current: u8 = @intCast(state.login.?.label.current);
+        const login_users = state.login.?.label.list.items;
+
+        // Try to update the local tty cache before overwriting,
+        // since multiple instances can be running
+        updateTtyCache(state, .{ .user_list = login_users }) catch |err| {
+            state.log_file.err(
+                state.io,
+                "sys",
+                "failed to update cache: {s}",
+                .{@errorName(err)},
+            ) catch {};
+        };
+
+        var save_file = std.Io.Dir.cwd().createFile(state.io, state.save_path, .{}) catch |err| {
+            state.log_file.err(
+                state.io,
+                "sys",
+                "failed to create save file: {s} {s}",
+                .{ @errorName(err), state.save_path },
+            ) catch break :save_last_settings;
+            break :save_last_settings;
+        };
+        defer save_file.close(state.io);
+
+        var file_buffer: [256]u8 = undefined;
+        var file_writer = save_file.writer(state.io, &file_buffer);
+        var writer = &file_writer.interface;
+
+        if (state.login_text) |box| {
+            try writer.print("0-{s}\n", .{box.text.items});
+        } else {
+            try writer.print("{d}\n", .{current});
+        }
+        for (login_users) |user| {
+            try writer.print("{s}:{d}\n", .{ user.name, user.session_index.* });
+        }
+
+        state.tty_cache[state.active_tty] = current;
+        for (state.tty_cache, 0..) |maybe_user_index, tty_num| {
+            if (maybe_user_index) |user_index| {
+                // Posix usernames can't contain a '/'
+                // And, well, if your username is this string...
+                try writer.print("ly/tty{d}:{s}\n", .{ tty_num, login_users[user_index].name });
+            }
+        }
+        try writer.flush();
+
+        // Delete previous save file if it exists
+        if (migrator.maybe_save_file) |path| {
+            defer temporary_allocator.free(path);
+            std.Io.Dir.cwd().deleteFile(state.io, path) catch {};
+        } else if (state.has_old_save) {
+            std.Io.Dir.cwd().deleteFile(state.io, state.old_save_path) catch {};
+        }
+    }
+
+    var shared_err = try SharedError.init(null, null);
+    defer shared_err.deinit();
+
+    {
+        state.log_file.deinit(state.io);
+
+        session_pid = std.posix.system.fork();
+        if (session_pid == 0) {
+            const current_environment = state.session.label.list.items[state.session.label.current].environment;
+
+            // Use auto_login_service for autologin, otherwise use configured service
+            const service_name = if (state.is_autologin) state.config.auto_login_service else state.config.service_name;
+            const password_text = if (state.is_autologin) "" else state.password.text.items;
+
+            const auth_options = auth.AuthOptions{
+                .tty = state.active_tty,
+                .service_name = service_name,
+                .path = state.config.path,
+                .session_log = state.config.session_log,
+                .xauth_cmd = state.config.xauth_cmd,
+                .setup_cmd = state.config.setup_cmd,
+                .login_cmd = state.config.login_cmd,
+                .faillock_tally_dir = state.config.faillock_tally_dir,
+                .x_cmd = state.config.x_cmd,
+                .x_vt = state.config.x_vt,
+                .session_pid = session_pid,
+                .use_kmscon_vt = state.use_kmscon_vt,
+            };
+
+            // Signal action to give up control on the TTY
+            const tty_control_transfer_act = std.posix.Sigaction{
+                .handler = .{ .handler = &ttyControlTransferSignalHandler },
+                .mask = std.posix.sigemptyset(),
+                .flags = 0,
+            };
+            std.posix.sigaction(std.posix.SIG.INT, &tty_control_transfer_act, null);
+
+            try state.log_file.reinit(state.io);
+
+            auth.authenticate(
+                state.allocator,
+                state.io,
+                &state.log_file,
+                auth_options,
+                current_environment,
+                if (state.login_text) |box| box.text.items else state.login.?.getCurrentUsername(),
+                if (state.maybe_old_password) |pass| pass else password_text,
+                if (state.maybe_old_password != null) password_text else null,
+            ) catch |err| {
+                shared_err.writeError(err);
+
+                state.log_file.deinit(state.io);
+                std.process.exit(1);
+            };
+
+            state.log_file.deinit(state.io);
+            std.process.exit(0);
+        }
+
+        if (state.maybe_old_password) |pass| {
+            state.allocator.free(pass);
+            state.maybe_old_password = null;
+        }
+
+        if (session_pid != -1) {
+            var session_status: c_int = undefined;
+            _ = std.posix.system.waitpid(session_pid, &session_status, 0);
+            // HACK: It seems like the session process is not exiting immediately after the waitpid call.
+            // This is a workaround to ensure the session process has exited before re-initializing the TTY.
+            state.io.sleep(.fromSeconds(1), .real) catch {};
+            session_pid = -1;
+        }
+
+        try state.log_file.reinit(state.io);
+    }
+
+    try state.buffer.reclaim();
+
+    const auth_err = shared_err.readError();
+    if (auth_err) |err| handle_error: {
+        if (err == error.PamNewAuthTokenRequired) {
+            try state.info_line.addMessage(
+                state.lang.token_expired,
+                state.config.bg,
+                state.config.fg,
+            );
+
+            state.maybe_old_password = try state.allocator.dupe(u8, state.password.text.items);
+            state.password.clear();
+            state.is_autologin = false;
+            break :handle_error;
+        }
+
+        state.auth_fails += 1;
+        state.buffer.setActiveWidget(state.password_widget);
+
+        try state.info_line.addMessage(
+            getAuthErrorMsg(err, state.lang),
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "auth",
+            "failed to authenticate: {s}",
+            .{@errorName(err)},
+        );
+
+        if (state.config.clear_password or err != error.PamAuthError) state.password.clear();
+    } else {
+        if (state.config.logout_cmd) |logout_cmd| execute_cmd: {
+            var process = std.process.spawn(state.io, .{
+                .argv = &[_][]const u8{ "/bin/sh", "-c", logout_cmd },
+            }) catch break :execute_cmd;
+            _ = process.wait(state.io) catch {};
+        }
+
+        state.password.clear();
+        state.is_autologin = false;
+        try state.info_line.addMessage(
+            state.lang.logout,
+            state.config.bg,
+            state.config.fg,
+        );
+        try state.log_file.info(state.io, "auth", "logged out", .{});
+    }
+
+    if (state.config.auth_fails == 0 or state.auth_fails < state.config.auth_fails) {
+        try TerminalBuffer.clearScreen(true);
+        state.buffer.drawNextFrame(true);
+    }
+
+    // Restore the cursor
+    try TerminalBuffer.setCursor(0, 0);
+    try TerminalBuffer.presentBuffer();
+    return false;
+}
+
+fn shutdownCmd(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    shutdown = true;
+    state.buffer.stopEventLoop();
+    return false;
+}
+
+fn restartCmd(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    restart = true;
+    state.buffer.stopEventLoop();
+    return false;
+}
+
+fn decreaseBrightnessCmd(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    adjustBrightness(state.io, state.config.brightness_down_cmd) catch |err| {
+        try state.info_line.addMessage(
+            state.lang.err_brightness_change,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to decrease brightness: {s}",
+            .{@errorName(err)},
+        );
+    };
+    return false;
+}
+
+fn increaseBrightnessCmd(ptr: *anyopaque) !bool {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    adjustBrightness(state.io, state.config.brightness_up_cmd) catch |err| {
+        try state.info_line.addMessage(
+            state.lang.err_brightness_change,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to increase brightness: {s}",
+            .{@errorName(err)},
+        );
+    };
+    return false;
+}
+
+fn updateNumlock(self: *Label, ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    const lock_state = interop.getLockState() catch |err| {
+        self.update_fn = null;
+        try state.info_line.addMessage(
+            state.lang.err_lock_state,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to get lock state for numlock: {s}",
+            .{@errorName(err)},
+        );
+        return;
+    };
+
+    self.setText(if (lock_state.numlock) state.lang.numlock else "");
+}
+
+fn updateCapslock(self: *Label, ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    const lock_state = interop.getLockState() catch |err| {
+        self.update_fn = null;
+        try state.info_line.addMessage(
+            state.lang.err_lock_state,
+            state.config.error_bg,
+            state.config.error_fg,
+        );
+        try state.log_file.err(
+            state.io,
+            "sys",
+            "failed to get lock state for capslock: {s}",
+            .{@errorName(err)},
+        );
+        return;
+    };
+
+    self.setText(if (lock_state.capslock) state.lang.capslock else "");
+}
+
+fn updateBattery(self: *Label, ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.config.battery_id) |id| {
+        const battery_percentage = getBatteryPercentage(state.io, id) catch |err| {
+            self.update_fn = null;
+            try state.log_file.err(
+                state.io,
+                "sys",
+                "failed to get battery percentage: {s}",
+                .{@errorName(err)},
+            );
+            try state.info_line.addMessage(
+                state.lang.err_battery,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            return;
+        };
+
+        try self.setTextBuf(
+            &state.battery_buf,
+            "BAT: {d}%",
+            .{battery_percentage},
+        );
+    }
+}
+
+fn updateClock(self: *Label, ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.config.clock) |clock| draw_clock: {
+        const clock_str = interop.timeAsString(state.io, &state.clock_buf, clock);
+
+        if (clock_str.len == 0) {
+            self.update_fn = null;
+            try state.info_line.addMessage(
+                state.lang.err_clock_too_long,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "tui",
+                "clock string too long",
+                .{},
+            );
+            break :draw_clock;
+        }
+
+        self.setText(clock_str);
+    }
+}
+
+fn updateCustomInfo(lbl: *Label, ptr: *anyopaque) !void {
+    const state: *UiState = @ptrCast(@alignCast(ptr));
+    const wid = lbl.widget().id;
+
+    for (state.custom_info.items) |*i| {
+        if (i.info.id != wid) continue;
+        // Here, a counter ticks down every time `updateCustomInfo` runs on that
+        // particular label. It will only run the command and update the label
+        // once it reaches to 1. If a refresh value is defined it's then reset to
+        // that refresh value.
+        if (i.info.counter == 1) {
+            var c = try std.process.spawn(state.io, .{
+                .argv = &[_][]const u8{ "/bin/sh", "-c", i.info.cmd orelse custom.UNDEFINED_CMD },
+                .stdout = .pipe,
+                .stderr = .pipe,
+            });
+
+            var stdout_buffer: [1024]u8 = undefined;
+            var stdout_file_reader = c.stdout.?.reader(state.io, &stdout_buffer);
+
+            const stdout = stdout_file_reader.interface.allocRemaining(state.allocator, .limited(state.buffer.width)) catch alloc_error: {
+                break :alloc_error try std.fmt.allocPrint(state.allocator, "{s}: [{s}]", .{ i.info.name, state.lang.custom_info_err_output_long });
+            };
+            defer state.allocator.free(stdout);
+
+            var cur_stdout = stdout;
+            const newline_index = std.mem.indexOfAny(u8, stdout, "\n");
+            if (newline_index) |idx| cur_stdout = stdout[0..idx];
+
+            _ = try c.wait(state.io);
+
+            // Sometimes, the output of a command would have an unprintable character at
+            // the end of its output, causing '�' (U+FFFD) to appear in its place. Here, we check
+            // if this is the case and remove it.
+            if (cur_stdout.len != 0 and !std.ascii.isPrint(cur_stdout[cur_stdout.len - 1])) {
+                cur_stdout = cur_stdout[0 .. cur_stdout.len - 1];
+            }
+
+            state.allocator.free(lbl.text);
+            if (cur_stdout.len == 0) {
+                const stderr_length = try c.stderr.?.length(state.io);
+                try lbl.setTextAlloc(state.allocator, "{s}: [{s}{s}]", .{ i.info.name, state.lang.custom_info_err_no_output, if (stderr_length > 0) state.lang.custom_info_err_no_output_error else "" });
+            } else {
+                try lbl.setTextAlloc(state.allocator, "{s}", .{cur_stdout});
+            }
+
+            // Called to re-position the widgets after they receive their output.
+            try positionWidgets(state);
+            if (i.info.refresh != 0)
+                i.info.counter = i.info.refresh;
+        }
+        if (i.info.counter != 0)
+            i.info.counter -= 1;
+    }
+}
+
+fn calculateClockTimeout(_: *Label, _: *anyopaque) !?usize {
+    const time = try interop.getTimeOfDay();
+
+    return @intCast(1000 - @divTrunc(time.microseconds, 1000) + 1);
+}
+
+fn updateBigClock(self: *BigLabel, ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.box.height + (BigLabel.CHAR_HEIGHT + 2) * 2 >= state.buffer.height) return;
+
+    const time = try interop.getTimeOfDay();
+    const animate_time = @divTrunc(time.microseconds, 500_000);
+    const separator = if (state.animate and animate_time != 0) " " else ":";
+    const format = try std.fmt.bufPrintSentinel(
+        &state.bigclock_format_buf,
+        "{s}{s}{s}{s}{s}{s}",
+        .{
+            if (state.config.bigclock_12hr) "%I" else "%H",
+            separator,
+            "%M",
+            if (state.config.bigclock_seconds) separator else "",
+            if (state.config.bigclock_seconds) "%S" else "",
+            if (state.config.bigclock_12hr) "%p" else "",
+        },
+        0,
+    );
+
+    const clock_str = interop.timeAsString(state.io, &state.bigclock_buf, format);
+    self.setText(clock_str);
+}
+
+fn calculateBigClockTimeout(_: *BigLabel, ptr: *anyopaque) !?usize {
+    const state: *UiState = @ptrCast(@alignCast(ptr));
+    const time = try interop.getTimeOfDay();
+
+    if (state.config.bigclock_seconds) {
+        return @intCast(1000 - @divTrunc(time.microseconds, 1000) + 1);
+    }
+
+    return @intCast((60 - @rem(time.seconds, 60)) * 1000 - @divTrunc(time.microseconds, 1000) + 1);
+}
+
+fn updateBox(self: *Box, ptr: *anyopaque) !void {
+    const state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.config.vi_mode) {
+        self.bottom_title = if (state.insert_mode) state.lang.insert else state.lang.normal;
+    }
+}
+
+fn updateSessionSpecifier(self: *Label, ptr: *anyopaque) !void {
+    const state: *UiState = @ptrCast(@alignCast(ptr));
+
+    const env = state.session.label.list.items[state.session.label.current];
+    self.setText(env.environment.specifier);
+}
+
+const Corner = enum {
+    bottomLeft,
+    bottomRight,
+    topLeft,
+    topRight,
+};
+
+const PositionedWidgets = struct {
+    binds: []bool,
+    labels: []bool,
+};
+
+fn positionSingleWidget(state: *UiState, item: []const u8, current_x: *usize, current_y: usize, is_left: bool, is_top: bool, positioned: *PositionedWidgets) !bool {
+    const base_x = state.edge_margin.x;
+
+    if (std.mem.eql(u8, item, "shutdown")) {
+        if (state.config.shutdown_key == null) return false;
+        const width = TerminalBuffer.strWidth(state.shutdown_label.text);
+        if (is_left) {
+            state.shutdown_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.shutdown_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "restart")) {
+        if (state.config.restart_key == null) return false;
+        const width = TerminalBuffer.strWidth(state.restart_label.text);
+        if (is_left) {
+            state.restart_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.restart_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "britup")) {
+        if (state.config.brightness_up_key == null) return false;
+        const width = TerminalBuffer.strWidth(state.brightness_up_label.text);
+        if (is_left) {
+            state.brightness_up_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.brightness_up_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "britdown")) {
+        if (state.config.brightness_down_key == null) return false;
+        const width = TerminalBuffer.strWidth(state.brightness_down_label.text);
+        if (is_left) {
+            state.brightness_down_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.brightness_down_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "password")) {
+        if (state.config.show_password_key == null) return false;
+        const width = TerminalBuffer.strWidth(state.toggle_password_label.text);
+        if (is_left) {
+            state.toggle_password_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.toggle_password_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "clock") or std.mem.eql(u8, item, "time")) {
+        if (state.config.clock == null) return false;
+        const width = TerminalBuffer.strWidth(state.clock_label.text);
+        if (is_left) {
+            state.clock_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.clock_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "tty")) {
+        const width = TerminalBuffer.strWidth(state.tty_label.text);
+        if (is_left) {
+            state.tty_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.tty_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "battery")) {
+        if (state.config.battery_id == null) return false;
+        const width = TerminalBuffer.strWidth(state.battery_label.text);
+        if (is_left) {
+            state.battery_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.battery_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "version")) {
+        const width = TerminalBuffer.strWidth(state.version_label.text);
+        if (is_left) {
+            state.version_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.version_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "numlock")) {
+        const width = TerminalBuffer.strWidth(state.lang.numlock);
+        if (is_left) {
+            state.numlock_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.numlock_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "capslock")) {
+        const width = TerminalBuffer.strWidth(state.lang.capslock);
+        if (is_left) {
+            state.capslock_label.positionXY(Position.init(current_x.*, current_y));
+            current_x.* += width + 1;
+        } else {
+            const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+            state.capslock_label.positionXY(Position.init(dwidth, current_y));
+            if (width + 1 <= current_x.*) current_x.* -= width + 1;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "labels")) {
+        for (state.custom_info.items, 0..) |*info, i| {
+            if (positioned.labels[i]) continue;
+            const width = TerminalBuffer.strWidth(info.lbl.text);
+            if (is_left) {
+                info.lbl.positionXY(Position.init(current_x.*, current_y));
+                current_x.* += width + 1;
+            } else {
+                const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+                info.lbl.positionXY(Position.init(dwidth, current_y));
+                if (width + 1 <= current_x.*) current_x.* -= width + 1;
+            }
+            positioned.labels[i] = true;
+        }
+        return true;
+    } else if (std.mem.eql(u8, item, "binds")) {
+        var local_x = current_x.*;
+        var local_y = current_y;
+
+        for (state.custom_binds.items, 0..) |*bind, i| {
+            if (positioned.binds[i]) continue;
+            const width = TerminalBuffer.strWidth(bind.lbl.text);
+
+            if (is_left) {
+                if (local_x + width > (state.config.custom_bind_width orelse state.buffer.width) - state.edge_margin.x) {
+                    local_x = base_x;
+                    if (is_top) local_y += 1 else local_y -= 1;
+                }
+                bind.lbl.positionXY(Position.init(local_x, local_y));
+                local_x += width + 1;
+            } else {
+                if (width + state.edge_margin.x > local_x) {
+                    local_x = state.buffer.width - state.edge_margin.x;
+                    if (is_top) local_y += 1 else local_y -= 1;
+                }
+                const dwidth = if (width > local_x) 0 else local_x - width;
+                bind.lbl.positionXY(Position.init(dwidth, current_y));
+                if (width + 1 <= local_x) local_x -= width + 1;
+            }
+            positioned.binds[i] = true;
+        }
+        current_x.* = local_x;
+        return true;
+    } else if (std.mem.startsWith(u8, item, "lbl:")) {
+        const name = item["lbl:".len..];
+        for (state.custom_info.items, 0..) |*info, i| {
+            if (std.mem.eql(u8, info.info.name, name)) {
+                if (positioned.labels[i]) return false;
+                const width = TerminalBuffer.strWidth(info.lbl.text);
+                if (is_left) {
+                    info.lbl.positionXY(Position.init(current_x.*, current_y));
+                    current_x.* += width + 1;
+                } else {
+                    const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+                    info.lbl.positionXY(Position.init(dwidth, current_y));
+                    if (width + 1 <= current_x.*) current_x.* -= width + 1;
+                }
+                positioned.labels[i] = true;
+                return true;
+            }
+        }
+    } else if (std.mem.startsWith(u8, item, "cmd:")) {
+        const key = item["cmd:".len..];
+        for (state.custom_binds.items, 0..) |*bind, i| {
+            if (std.mem.eql(u8, bind.key, key)) {
+                if (positioned.binds[i]) return false;
+                const width = TerminalBuffer.strWidth(bind.lbl.text);
+                if (is_left) {
+                    bind.lbl.positionXY(Position.init(current_x.*, current_y));
+                    current_x.* += width + 1;
+                } else {
+                    const dwidth = if (width > current_x.*) 0 else current_x.* - width;
+                    bind.lbl.positionXY(Position.init(dwidth, current_y));
+                    if (width + 1 <= current_x.*) current_x.* -= width + 1;
+                }
+                positioned.binds[i] = true;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn positionItem(state: *UiState, item: []const u8, current_x: usize, current_y: usize, is_left: bool, is_top: bool, positioned: *PositionedWidgets) !bool {
+    // Check if item contains a comma for compound widgets
+    if (std.mem.indexOf(u8, item, ",") == null) {
+        var line_x = current_x;
+        return positionSingleWidget(state, item, &line_x, current_y, is_left, is_top, positioned);
+    }
+
+    var it = std.mem.tokenizeAny(u8, item, ",");
+    var success = false;
+
+    // Check if we need to wrap to next line
+    var line_x = current_x;
+
+    // Now position each subitem
+    while (it.next()) |subitem| {
+        const trimmed = std.mem.trim(u8, subitem, " ");
+
+        if (try positionSingleWidget(state, trimmed, &line_x, current_y, is_left, is_top, positioned)) {
+            success = true;
+        }
+    }
+
+    return success;
+}
+
+fn positionCorner(state: *UiState, config_str: []const u8, corner: Corner, positioned: *PositionedWidgets) !void {
+    const is_left = corner == .topLeft or corner == .bottomLeft;
+    const is_top = corner == .topLeft or corner == .topRight;
+
+    var y_offset: usize = 0;
+    var i: usize = 0;
+    const len = config_str.len;
+
+    while (i < len) {
+        // Skip whitespace and brackets
+        while (i < len and (config_str[i] == ' ' or config_str[i] == '\t' or config_str[i] == '[' or config_str[i] == ']')) {
+            i += 1;
+        }
+        if (i >= len) break;
+
+        const start = i;
+        while (i < len and config_str[i] != ' ' and config_str[i] != '\t' and config_str[i] != '[' and config_str[i] != ']') {
+            i += 1;
+        }
+        const token = config_str[start..i];
+
+        const current_x = if (is_left) state.edge_margin.x else state.buffer.width - state.edge_margin.x;
+        const current_y = if (is_top) state.edge_margin.y + y_offset else state.buffer.height - 1 - state.edge_margin.y - y_offset;
+
+        if (try positionItem(state, token, current_x, current_y, is_left, is_top, positioned)) {
+            y_offset += 1;
+        }
+    }
+}
+
+fn positionWidgets(ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    const offscreen = Position.init(state.buffer.width + 1, state.buffer.height + 1);
+
+    // Reset all potential corner widgets to offscreen
+    state.shutdown_label.positionXY(offscreen);
+    state.restart_label.positionXY(offscreen);
+    state.toggle_password_label.positionXY(offscreen);
+    state.brightness_down_label.positionXY(offscreen);
+    state.brightness_up_label.positionXY(offscreen);
+    state.clock_label.positionXY(offscreen);
+    state.bigclock_label.positionXY(offscreen);
+    state.tty_label.positionXY(offscreen);
+    state.battery_label.positionXY(offscreen);
+    state.version_label.positionXY(offscreen);
+    state.numlock_label.positionXY(offscreen);
+    state.capslock_label.positionXY(offscreen);
+
+    for (state.custom_binds.items) |*bind| {
+        bind.lbl.positionXY(offscreen);
+    }
+    for (state.custom_info.items) |*info| {
+        info.lbl.positionXY(offscreen);
+    }
+
+    var positioned = PositionedWidgets{
+        .binds = try state.allocator.alloc(bool, state.custom_binds.items.len),
+        .labels = try state.allocator.alloc(bool, state.custom_info.items.len),
+    };
+    defer state.allocator.free(positioned.binds);
+    defer state.allocator.free(positioned.labels);
+
+    @memset(positioned.binds, false);
+    @memset(positioned.labels, false);
+
+    try positionCorner(state, state.config.corner_top_left, .topLeft, &positioned);
+    try positionCorner(state, state.config.corner_top_right, .topRight, &positioned);
+    try positionCorner(state, state.config.corner_bottom_left, .bottomLeft, &positioned);
+    try positionCorner(state, state.config.corner_bottom_right, .bottomRight, &positioned);
+
+    var bb_height = state.box.height;
+    var bb_width = state.box.width;
+    const clock_text_len = TerminalBuffer.strWidth(state.bigclock_label.text) * (BigLabel.CHAR_WIDTH + 1);
+
+    if (state.config.bigclock != .none) {
+        const gap: usize = if (state.config.bigclock_outline_fg != null) 3 else 2;
+        bb_height += BigLabel.CHAR_HEIGHT + gap;
+        bb_width = @max(bb_width, clock_text_len);
+    }
+
+    const dheight = if (bb_height + 1 > state.buffer.height) 1 else state.buffer.height - bb_height - 1;
+    const dwidth = if (bb_width + 1 > state.buffer.width) 1 else state.buffer.width - bb_width - 1;
+
+    const max_v_position: f32 = @floatFromInt(dheight);
+    const max_h_position: f32 = @floatFromInt(dwidth);
+
+    bb_height = @min(bb_height, state.buffer.height - 2);
+    bb_width = @min(bb_width, state.buffer.width - 2);
+
+    const v_space: f32 = @floatFromInt(state.buffer.height - bb_height);
+    const v_position: usize = @intFromFloat(if (max_v_position < 1.0) 1.0 else std.math.clamp(v_space * state.config.box_position_v, 1.0, max_v_position));
+    const h_space: f32 = @floatFromInt(state.buffer.width - bb_width);
+    const h_position: usize = @intFromFloat(if (max_h_position < 1.0) 1.0 else std.math.clamp(h_space * state.config.box_position_h, 1.0, max_h_position));
+
+    if (state.config.bigclock != .none) {
+        const cwidth = if (clock_text_len > bb_width) 0 else bb_width - clock_text_len;
+
+        state.bigclock_label.positionXY(TerminalBuffer.START_POSITION
+            .addX(h_position + cwidth / 2)
+            .addY(v_position));
+    }
+
+    const bwidth = if (state.box.width > bb_width) 0 else bb_width - state.box.width;
+    const bheight = if (state.box.height > bb_height) 0 else bb_height - state.box.height;
+
+    state.box.positionXY(TerminalBuffer.START_POSITION
+        .addX(h_position + bwidth / 2)
+        .addY(v_position + bheight));
+
+    state.info_line.label.positionY(state.box
+        .childrenPosition());
+
+    state.session_specifier_label.positionX(state.info_line.label
+        .childrenPosition()
+        .addY(1));
+    state.session.label.positionY(state.session_specifier_label
+        .childrenPosition()
+        .addX(state.labels_max_length - TerminalBuffer.strWidth(state.session_specifier_label.text) + 1));
+
+    state.login_label.positionX(state.session.label
+        .childrenPosition()
+        .resetXFrom(state.info_line.label.childrenPosition())
+        .addY(1));
+    if (state.login_text) |box| {
+        box.positionY(state.login_label
+            .childrenPosition()
+            .addX(state.labels_max_length - TerminalBuffer.strWidth(state.login_label.text) + 1));
+    } else {
+        state.login.?.label.positionY(state.login_label
+            .childrenPosition()
+            .addX(state.labels_max_length - TerminalBuffer.strWidth(state.login_label.text) + 1));
+    }
+
+    const login_children_pos = if (state.login_text) |box|
+        box.childrenPosition()
+    else
+        state.login.?.label.childrenPosition();
+
+    state.password_label.positionX(login_children_pos
+        .resetXFrom(state.info_line.label.childrenPosition())
+        .addY(1));
+    state.password.positionY(state.password_label
+        .childrenPosition()
+        .addX(state.labels_max_length - TerminalBuffer.strWidth(state.password_label.text) + 1));
+}
+
+fn handleInactivity(ptr: *anyopaque) !void {
+    var state: *UiState = @ptrCast(@alignCast(ptr));
+
+    if (state.config.inactivity_cmd) |inactivity_cmd| handle_inactivity_cmd: {
+        var process = std.process.spawn(state.io, .{
+            .argv = &[_][]const u8{ "/bin/sh", "-c", inactivity_cmd },
+            .stdout = .ignore,
+            .stderr = .ignore,
+        }) catch break :handle_inactivity_cmd;
+
+        const process_result = process.wait(state.io) catch {
+            break :handle_inactivity_cmd;
+        };
+        if (process_result.exited != 0) {
+            try state.info_line.addMessage(
+                state.lang.err_inactivity,
+                state.config.error_bg,
+                state.config.error_fg,
+            );
+            try state.log_file.err(
+                state.io,
+                "sys",
+                "failed to execute inactivity command: exit code {d}",
+                .{process_result.exited},
+            );
+        }
+    }
+}
+
+fn addOtherEnvironment(session: *Session, lang: Lang, display_server: DisplayServer, exec: ?[]const u8) !void {
+    const name = switch (display_server) {
+        .shell => lang.shell,
+        .xinitrc => lang.xinitrc,
+        else => unreachable,
+    };
+
+    try session.addEnvironment(.{
+        .entry_ini = null,
+        .name = name,
+        .xdg_session_desktop = null,
+        .xdg_desktop_names = null,
+        .cmd = exec,
+        .specifier = lang.other,
+        .display_server = display_server,
+        .is_terminal = display_server == .shell,
+    });
+}
+
+fn crawl(session: *Session, io: std.Io, lang: Lang, path: []const u8, display_server: DisplayServer) !void {
+    if (!std.Io.Dir.path.isAbsolute(path)) return error.PathNotAbsolute;
+
+    var iterable_directory = try std.Io.Dir.openDirAbsolute(io, path, .{ .iterate = true });
+    defer iterable_directory.close(io);
+
+    var iterator = iterable_directory.iterate();
+    while (try iterator.next(io)) |item| {
+        if (!std.mem.eql(u8, std.Io.Dir.path.extension(item.name), ".desktop")) continue;
+
+        const entry_path = try std.fmt.allocPrint(session.label.allocator, "{s}/{s}", .{ path, item.name });
+        defer session.label.allocator.free(entry_path);
+        var entry_ini = Ini(Entry).init(session.label.allocator);
+        const data = try entry_ini.readFileToStruct(io, entry_path, .{
+            .fieldHandler = null,
+            .comment_characters = "#",
+        });
+        errdefer entry_ini.deinit();
+
+        const file_name = try session.label.allocator.dupe(u8, std.Io.Dir.path.stem(item.name));
+        const entry = data.@"Desktop Entry";
+        var maybe_xdg_session_desktop: ?[]const u8 = null;
+        var maybe_xdg_desktop_names: ?[]const u8 = null;
+
+        // Prepare the XDG_SESSION_DESKTOP and XDG_CURRENT_DESKTOP environment
+        // variables here
+        if (entry.DesktopNames) |desktop_names| {
+            maybe_xdg_session_desktop = std.mem.sliceTo(desktop_names, ';');
+
+            for (desktop_names) |*c| {
+                if (c.* == ';') c.* = ':';
+            }
+
+            if (desktop_names[desktop_names.len - 1] == ':') {
+                maybe_xdg_desktop_names = desktop_names[0 .. desktop_names.len - 1];
+            } else {
+                maybe_xdg_desktop_names = desktop_names;
+            }
+        } else if (display_server != .custom) {
+            // If DesktopNames is empty, and this isn't a custom session entry,
+            // we'll take the name of the session file
+            if (file_name.len > 0) maybe_xdg_session_desktop = file_name;
+        }
+
+        try session.addEnvironment(.{
+            .entry_ini = entry_ini,
+            .file_name = file_name,
+            .name = entry.Name,
+            .xdg_session_desktop = maybe_xdg_session_desktop,
+            .xdg_desktop_names = maybe_xdg_desktop_names,
+            .cmd = entry.Exec,
+            .specifier = switch (display_server) {
+                .wayland => lang.wayland,
+                .x11 => lang.x11,
+                .custom => lang.custom,
+                else => lang.other,
+            },
+            .display_server = display_server,
+            .is_terminal = entry.Terminal orelse false,
+        });
+    }
+}
+
+fn isValidUsername(username: []const u8, usernames: StringList) bool {
+    for (usernames.items) |valid_username| {
+        if (std.mem.eql(u8, username, valid_username)) return true;
+    }
+    return false;
+}
+
+fn findSessionByName(session: *Session, name: []const u8) ?usize {
+    for (session.label.list.items, 0..) |env, i| {
+        if (std.ascii.eqlIgnoreCase(env.environment.file_name, name)) return i;
+        if (std.ascii.eqlIgnoreCase(env.environment.name, name)) return i;
+        if (env.environment.xdg_session_desktop) |session_desktop| {
+            if (session_desktop.len > 0 and std.ascii.eqlIgnoreCase(session_desktop, name)) return i;
+        }
+        if (env.environment.xdg_desktop_names) |session_desktop_name| {
+            if (std.ascii.eqlIgnoreCase(session_desktop_name, name)) return i;
+        }
+    }
+    return null;
+}
+
+fn getAllUsernames(allocator: Allocator, io: std.Io, login_defs_path: []const u8, uid_range_error: *?anyerror) !StringList {
+    const uid_range = interop.getUserIdRange(allocator, io, login_defs_path) catch |err| no_uid_range: {
+        uid_range_error.* = err;
+        break :no_uid_range UidRange{
+            .uid_min = build_options.fallback_uid_min,
+            .uid_max = build_options.fallback_uid_max,
+        };
+    };
+
+    // There's no reliable (and clean) way to check for systemd support, so
+    // let's just define a range and check if a user is within it
+    const SYSTEMD_HOMED_UID_MIN = 60001;
+    const SYSTEMD_HOMED_UID_MAX = 60513;
+    const homed_uid_range = UidRange{
+        .uid_min = SYSTEMD_HOMED_UID_MIN,
+        .uid_max = SYSTEMD_HOMED_UID_MAX,
+    };
+
+    var usernames: StringList = .empty;
+    var maybe_entry = interop.getNextUsernameEntry();
+
+    while (maybe_entry) |entry| {
+        // We check if the UID is equal to 0 because we always want to add root
+        // as a username (even if you can't log into it)
+        const is_within_range =
+            entry.uid >= uid_range.uid_min and
+            entry.uid <= uid_range.uid_max;
+        const is_within_homed_range =
+            builtin.os.tag == .linux and
+            entry.uid >= homed_uid_range.uid_min and
+            entry.uid <= homed_uid_range.uid_max;
+        const is_root =
+            entry.uid == 0 and
+            entry.username != null;
+
+        if (is_within_range or is_within_homed_range or is_root) {
+            const username = try allocator.dupe(u8, entry.username.?);
+            try usernames.append(allocator, username);
+        }
+
+        maybe_entry = interop.getNextUsernameEntry();
+    }
+
+    interop.closePasswordDatabase();
+    return usernames;
+}
+
+fn adjustBrightness(io: std.Io, cmd: []const u8) !void {
+    var process = std.process.spawn(io, .{
+        .argv = &[_][]const u8{ "/bin/sh", "-c", cmd },
+        .stdout = .ignore,
+        .stderr = .ignore,
+    }) catch return;
+
+    const process_result = process.wait(io) catch return;
+    if (process_result.exited != 0) {
+        return error.BrightnessChangeFailed;
+    }
+}
+
+fn getBatteryPercentage(io: std.Io, battery_id: []const u8) !u8 {
+    if (builtin.os.tag == .freebsd) {
+        // battery_id is unused on FreeBSD; sysctl exposes a single aggregate value.
+        // For multi-battery systems the MIB would be hw.acpi.battery.N.life,
+        // but hw.acpi.battery.life is the standard single-battery interface.
+        var capacity: c_int = -1;
+        var size: usize = @sizeOf(c_int);
+
+        const ret = interop.sysctl.sysctlbyname("hw.acpi.battery.life", &capacity, &size, null, 0);
+
+        if (ret != 0) return error.SysctlFailed;
+        if (capacity < 0 or capacity > 100) return error.InvalidBatteryCapacity;
+
+        return @intCast(capacity);
+    } else {
+        const path = try std.fmt.allocPrint(temporary_allocator, "/sys/class/power_supply/{s}/capacity", .{battery_id});
+        defer temporary_allocator.free(path);
+
+        const battery_file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        defer battery_file.close(io);
+
+        var buffer: [8]u8 = undefined;
+        const bytes_read = try battery_file.readStreaming(io, &.{&buffer});
+        const capacity_str = buffer[0..bytes_read];
+
+        const trimmed = std.mem.trimEnd(u8, capacity_str, "\n\r");
+
+        return try std.fmt.parseInt(u8, trimmed, 10);
+    }
+}
+
+fn getAuthErrorMsg(err: anyerror, lang: Lang) []const u8 {
+    return switch (err) {
+        error.GetPasswordNameFailed => lang.err_pwnam,
+        error.GetEnvListFailed => lang.err_envlist,
+        error.XauthFailed => lang.err_xauth,
+        error.XcbConnectionFailed => lang.err_xcb_conn,
+        error.GroupInitializationFailed => lang.err_user_init,
+        error.SetUserGidFailed => lang.err_user_gid,
+        error.SetUserUidFailed => lang.err_user_uid,
+        error.ChangeDirectoryFailed => lang.err_perm_dir,
+        error.TtyControlTransferFailed => lang.err_tty_ctrl,
+        error.SetPathFailed => lang.err_path,
+        error.PamAccountExpired => lang.err_pam_acct_expired,
+        error.PamAuthError => lang.err_pam_auth,
+        error.PamAuthInfoUnavailable => lang.err_pam_authinfo_unavail,
+        error.PamBufferError => lang.err_pam_buf,
+        error.PamCredentialsError => lang.err_pam_cred_err,
+        error.PamCredentialsExpired => lang.err_pam_cred_expired,
+        error.PamCredentialsInsufficient => lang.err_pam_cred_insufficient,
+        error.PamCredentialsUnavailable => lang.err_pam_cred_unavail,
+        error.PamMaximumTries => lang.err_pam_maxtries,
+        error.PamPermissionDenied => lang.err_pam_perm_denied,
+        error.PamSessionError => lang.err_pam_session,
+        error.PamSystemError => lang.err_pam_sys,
+        error.PamUserUnknown => lang.err_pam_user_unknown,
+        error.PamAbort => lang.err_pam_abort,
+        error.AccountLocked => lang.err_acc_locked,
+        else => @errorName(err),
+    };
+}
+
+// Updates the UiState's tty_cache using the save file.
+// Matched against the current truthful user list to ensure it's a valid index.
+fn updateTtyCache(state: *UiState, real_users: union(enum) { user_list: []UserList.User, usernames: [][]const u8 }) !void {
+    var save_file = try std.Io.Dir.cwd().openFile(state.io, state.save_path, .{});
+    defer save_file.close(state.io);
+
+    var file_buffer: [256]u8 = undefined;
+    var file_reader = save_file.reader(state.io, &file_buffer);
+    var reader = &file_reader.interface;
+
+    while (reader.seek < reader.buffer.len) {
+        var line = reader.takeDelimiterInclusive('\n') catch break;
+        if (!std.mem.startsWith(u8, line, "ly/tty")) continue;
+
+        line = line["ly/tty".len..];
+        var entry = std.mem.splitScalar(u8, line[0..(line.len - 1)], ':');
+        const tty_num_str = entry.next() orelse continue;
+        const saved_username = entry.next() orelse continue;
+
+        const tty_num = std.fmt.parseInt(usize, tty_num_str, 10) catch continue;
+        if (tty_num >= std.math.maxInt(u8)) continue;
+
+        switch (real_users) {
+            .usernames => |usernames| {
+                for (usernames, 0..) |username, u_index| {
+                    if (std.mem.eql(u8, username, saved_username)) {
+                        state.tty_cache[tty_num] = @intCast(u_index);
+                        break;
+                    }
+                }
+            },
+            .user_list => |user_list| {
+                for (user_list, 0..) |user, u_index| {
+                    if (std.mem.eql(u8, user.name, saved_username)) {
+                        state.tty_cache[tty_num] = @intCast(u_index);
+                        break;
+                    }
+                }
+            },
+        }
+    }
+}

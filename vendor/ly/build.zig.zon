@@ -1,0 +1,20 @@
+.{
+    .name = .ly,
+    .version = "1.6.0",
+    .fingerprint = 0xa148ffcc5dc2cb59,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .ly_ui = .{
+            .path = "ly-ui",
+        },
+        .clap = .{
+            .url = "git+https://github.com/Hejsil/zig-clap?ref=master#05faf3905e8548f5cc269a8836e154065e70128d",
+            .hash = "clap-0.12.0-oBajB4XpAQCF1WRKnD5KOKPsnwwT_NNdAJ7Ww3irYJac",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

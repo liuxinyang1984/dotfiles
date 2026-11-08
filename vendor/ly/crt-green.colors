@@ -1,0 +1,31 @@
+# Matrix 雨绿测试（棕金仍在 crt-amber.colors）
+# 主色 #00FF41 / 暗 #008F11 / 头亮 #39FF14
+fg=0x0100FF41
+bg=0x00000000
+highlight=0x0100FF41
+input_fg=0x0100FF41
+input_bg=0x00000000
+border_fg=0x0100FF41
+error_fg=0x01FF0000
+error_bg=0x00000000
+cmatrix_fg=0x0100FF41
+cmatrix_head_col=0x0139FF14
+colormix_col1=0x0100FF41
+colormix_col2=0x01008F11
+colormix_col3=0x20000000
+gameoflife_fg=0x0100FF41
+doom_top_color=0x00003B00
+doom_middle_color=0x00008F11
+doom_bottom_color=0x0000FF41
+mode=dark
+animation=none
+bigclock=en
+bigclock_seconds=true
+blank_box=false
+hide_borders=false
+text_in_center=true
+lang=unix
+hide_key_hints=true
+asterisk=*
+box_title=AT&T UNIX System V
+initial_info_text=

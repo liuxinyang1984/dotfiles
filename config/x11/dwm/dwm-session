@@ -34,6 +34,14 @@ for c in "$HOME/.local/bin/dwm" /usr/local/bin/dwm; do
 done
 [ -n "$DWM_BIN" ] || { echo "dwm not found in ~/.local/bin or /usr/local/bin" >&2; exit 1; }
 
-# dwmblocks / fcitx5 / dunst / clipmenud / picom 须在同一 dbus-run-session
+# 空闲：screensaver 触发 xss-lock→slock；DPMS 单独灭屏（秒，可环境变量覆盖）
+IDLE_LOCK_SEC="${IDLE_LOCK_SEC:-300}"   # 5 分钟锁屏
+IDLE_DPMS_SEC="${IDLE_DPMS_SEC:-900}"   # 15 分钟灭屏
+if command -v xset >/dev/null 2>&1; then
+	xset s "$IDLE_LOCK_SEC" "$IDLE_LOCK_SEC"
+	xset dpms "$IDLE_DPMS_SEC" "$IDLE_DPMS_SEC" "$IDLE_DPMS_SEC"
+fi
+
+# dwmblocks / fcitx5 / dunst / clipmenud / picom / xss-lock 须在同一 dbus-run-session
 # （blocks 在 session 外起则无 DBUS，sb-fcitx 的 fcitx5-remote 恒失败→永远「英」）
-exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""
+exec dbus-run-session -- sh -c "export PATH=\"${HOME}/.local/bin:\${PATH}\"; fcitx5 -d; if command -v dwmblocks >/dev/null 2>&1; then dwmblocks & fi; if command -v dunst >/dev/null 2>&1; then dunst & fi; if command -v clipmenud >/dev/null 2>&1; then clipmenud & fi; if command -v xss-lock >/dev/null 2>&1; then xss-lock -l -- slock & fi; [ -n \"$PICOM_BIN\" ] && \"$PICOM_BIN\" --experimental-backends -b; exec \"$DWM_BIN\""

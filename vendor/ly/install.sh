@@ -1,36 +1,34 @@
 #!/bin/sh
-# Ly：TUI 显示管理器 + Terminus console 字体
-#   ./install.sh              # Arch：装 ly/terminus-font，FONT=ter-132b，CRT 黄，enable ly@ttyN
-#   ./install.sh --no-packages  # 不跑 pacman，只改配置/单元
-#   ./install.sh --no-enable    # 不 enable systemd
-#   ./install.sh --no-colors    # 不改 /etc/ly/config.ini 颜色
+# Ly CRT：本仓自包含（已改源码 + 主题/启动钩子）
+#   ./install.sh                 # 依赖 + zig 编译 ly-dm + 配色 + enable ly@ttyN
+#   ./install.sh --no-packages
+#   ./install.sh --no-enable
+#   ./install.sh --no-colors
+#   ./install.sh --no-build      # 不编译（只要已有 /usr/local/bin/ly-dm）
 # 父仓: ./install.sh x11:ly
-# 颜色文件: crt-amber.colors（LY_COLORS=path 可换）；LY_SKIP_COLORS=1 等同 --no-colors
-#
-# 会话 .desktop 由各 desktop 模块自己装到 /usr/share/xsessions。
-# 本模块额外提供 TTY 会话 tmux → /etc/ly/custom-sessions（可选）。
+# 主题: ./theme.sh amber|green
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DO_PKGS=1
 DO_ENABLE=1
 DO_COLORS=1
+DO_BUILD=1
 FONT_NAME="${LY_FONT:-ter-132b}"
 LY_INI="${LY_INI:-/etc/ly/config.ini}"
 LY_CUSTOM="${LY_CUSTOM:-/etc/ly/custom-sessions}"
-LY_COLORS_FILE="${LY_COLORS:-$ROOT/crt-amber.colors}"
+LY_COLORS_FILE="${LY_COLORS:-$ROOT/crt-current.colors}"
+DST="${LY_DM_DST:-/usr/local/bin/ly-dm}"
+[ -e "$LY_COLORS_FILE" ] || LY_COLORS_FILE="$ROOT/crt-amber.colors"
 
 usage() {
 	cat <<'EOF'
-用法: ./install.sh [--no-packages] [--no-enable] [--no-colors]
+用法: ./install.sh [--no-packages] [--no-enable] [--no-colors] [--no-build]
 
-  Arch: pacman -S ly terminus-font
-  /etc/vconsole.conf → FONT=ter-132b（口语 ter-v32b），并 setfont 到 tty1–6
-  /etc/ly/startup.sh → 16 色调色板（黄槽改棕金；TTY 无真彩）
-  /etc/ly/config.ini → tty=1、配色、start_cmd
-  systemctl enable ly@tty1（并 disable 旧 ly@tty2）
-  可选: tmux.desktop → /etc/ly/custom-sessions/
-
-  dwm/kiosk/fvwm 的 xsessions 由对应 desktop:* 安装时写入。
+  从本仓源码 zig build → /usr/local/bin/ly-dm（不依赖发行版 ly 行为）
+  Arch 可选: pacman 装 zig / terminus-font /（可选）ly 仅借 unit 模板
+  Alpine 等: 需已有 zig≥0.17 与 console 字体；自行提供等价 unit
+  配色: crt-current.colors；调色板: /etc/ly/theme（见 theme.sh）
+  默认 enable ly@tty1（LY_TTY=N）；其它 ly@ttyN 只 disable 不 stop
 EOF
 }
 
@@ -39,11 +37,13 @@ for arg in "$@"; do
 	--no-packages) DO_PKGS=0 ;;
 	--no-enable) DO_ENABLE=0 ;;
 	--no-colors) DO_COLORS=0 ;;
+	--no-build) DO_BUILD=0 ;;
 	-h|--help) usage; exit 0 ;;
 	*) echo "未知参数: $arg" >&2; usage >&2; exit 1 ;;
 	esac
 done
 [ "${LY_SKIP_COLORS:-0}" = 1 ] && DO_COLORS=0
+[ "${LY_SKIP_BUILD:-0}" = 1 ] && DO_BUILD=0
 
 run_root() {
 	if [ "$(id -u)" -eq 0 ]; then
@@ -62,29 +62,68 @@ is_arch() {
 	[ -f /etc/arch-release ] || grep -qi arch /etc/os-release 2>/dev/null
 }
 
+is_alpine() {
+	[ -f /etc/alpine-release ]
+}
+
+# --- 依赖 ---
 if [ "$DO_PKGS" = 1 ]; then
 	if is_arch; then
-		echo "pacman: ly terminus-font"
-		run_root pacman -S --needed --noconfirm ly terminus-font
-		# tmux 会话可选
+		echo "pacman: zig terminus-font"
+		run_root pacman -S --needed --noconfirm --overwrite '*' zig terminus-font
+		# 可选：官方 ly 提供 systemd unit / 示例 ini（二进制仍用我们编的）
+		run_root pacman -S --needed --noconfirm ly || true
 		if ! command -v tmux >/dev/null 2>&1; then
-			echo "pacman: tmux（Ly custom 会话）"
 			run_root pacman -S --needed --noconfirm tmux || true
 		fi
+	elif is_alpine; then
+		echo "apk: zig terminus-font（若仓库有）"
+		run_root apk add --no-cache zig terminus-font tmux 2>/dev/null \
+			|| echo "警告: apk 依赖未齐，请确保 zig≥0.17 与 console 字体可用" >&2
 	else
-		echo "非 Arch：请自行安装 ly / terminus-font（或等价 console 字体）" >&2
+		echo "请自行安装: zig≥0.17、terminus（或等价 console 字体）" >&2
 	fi
 fi
 
-LY_BIN=/usr/bin/ly-dm
-if [ ! -x "$LY_BIN" ]; then
-	echo "未找到 $LY_BIN；跳过 Ly 配置（可先装 ly）" >&2
-	exit 0
+# --- 编译本仓源码 ---
+build_ly() {
+	if ! command -v zig >/dev/null 2>&1; then
+		echo "未找到 zig" >&2
+		return 1
+	fi
+	echo "zig $(zig version)；build -Doptimize=ReleaseSafe（$ROOT）"
+	(
+		cd "$ROOT"
+		zig build -Doptimize=ReleaseSafe
+	)
+	BIN="$ROOT/zig-out/bin/ly"
+	[ -x "$BIN" ] || { echo "缺少 $BIN" >&2; return 1; }
+	run_root install -m755 "$BIN" "$DST"
+	if command -v systemctl >/dev/null 2>&1; then
+		run_root mkdir -p /etc/systemd/system/ly@.service.d
+		run_root tee /etc/systemd/system/ly@.service.d/override.conf >/dev/null <<'UNIT'
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/ly-dm
+UNIT
+		run_root systemctl daemon-reload
+	fi
+	echo "ok: $DST"
+}
+
+if [ "$DO_BUILD" = 1 ]; then
+	build_ly || echo "警告: 编译失败" >&2
 fi
 
+if [ ! -x "$DST" ] && [ ! -x /usr/bin/ly-dm ]; then
+	echo "未找到 ly-dm（$DST）；中止配置" >&2
+	exit 1
+fi
+
+# --- 字体 ---
 if [ ! -f "/usr/share/kbd/consolefonts/${FONT_NAME}.psf.gz" ] && \
 	[ ! -f "/usr/share/kbd/consolefonts/${FONT_NAME}.psfu.gz" ]; then
-	echo "警告: 无 console 字体 ${FONT_NAME}（terminus-font 是否已装？）" >&2
+	echo "警告: 无 console 字体 ${FONT_NAME}" >&2
 else
 	echo "vconsole FONT=${FONT_NAME}"
 	if [ -f /etc/vconsole.conf ] && grep -qE '^[[:space:]]*FONT=' /etc/vconsole.conf; then
@@ -92,7 +131,6 @@ else
 	else
 		printf '\nFONT=%s\n' "$FONT_NAME" | run_root tee -a /etc/vconsole.conf >/dev/null
 	fi
-	# 立刻打到所有文本 VT（不只 Ly 那一路）
 	if [ -f "$ROOT/setfont-all.sh" ]; then
 		chmod +x "$ROOT/setfont-all.sh"
 		run_root env LY_FONT="$FONT_NAME" LY_TTY_MAX="${LY_TTY_MAX:-6}" \
@@ -101,18 +139,25 @@ else
 	run_root systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
 fi
 
-# Ly 启动钩子：字体 + 16 色黄槽→棕金（TTY 真彩会并到 16 色，只改 ini 往往看不出差别）
+run_root mkdir -p /etc/ly
 if [ -f "$ROOT/startup.sh" ]; then
 	chmod +x "$ROOT/startup.sh"
 	run_root install -m755 "$ROOT/startup.sh" /etc/ly/startup.sh
-	echo "startup.sh → /etc/ly/startup.sh（console 调色板）"
+	echo "startup.sh → /etc/ly/startup.sh"
+fi
+# 默认 theme 文件（与 crt-current 一致）
+if [ ! -f /etc/ly/theme ]; then
+	_th=amber
+	if [ -L "$ROOT/crt-current.colors" ]; then
+		_th=$(basename "$(readlink "$ROOT/crt-current.colors")" .colors)
+		_th=${_th#crt-}
+	fi
+	printf '%s\n' "$_th" | run_root tee /etc/ly/theme >/dev/null
 fi
 
-# 默认 tty1（LY_TTY=N 覆盖）；写入 ini，不再跟发行版默认的 tty=2
 TTY_NUM="${LY_TTY:-1}"
 LY_UNIT="ly@tty${TTY_NUM}.service"
 
-# 按 key upsert 到 config.ini（不整文件覆盖；勿用 sed 替换值，& 会被当成匹配引用）
 ly_upsert_ini() {
 	_ini=$1
 	_key=$2
@@ -137,7 +182,6 @@ else:
 open(out, "w", encoding="utf-8").write(text)
 PY
 	else
-		# 无 python 时仍尽量转义 &
 		_esc=$(printf '%s' "$_val" | sed 's/[&\\]/\\&/g')
 		if [ -f "$_ini" ] && grep -qE "^[[:space:]]*${_key}[[:space:]]*=" "$_ini"; then
 			sed -E "s|^[[:space:]]*${_key}[[:space:]]*=.*|${_key} = ${_esc}|" "$_ini" >"$_tmp"
@@ -155,29 +199,28 @@ PY
 if [ ! -f "$LY_INI" ] && [ -f /etc/ly/config.ini.example ]; then
 	run_root install -m644 /etc/ly/config.ini.example "$LY_INI"
 fi
-if [ -f "$LY_INI" ]; then
-	echo "Ly tty = ${TTY_NUM}"
-	ly_upsert_ini "$LY_INI" tty "$TTY_NUM"
-	ly_upsert_ini "$LY_INI" start_cmd "/etc/ly/startup.sh"
+# 无官方示例时写一份最小 ini
+if [ ! -f "$LY_INI" ]; then
+	printf '# ly CRT\ntty = %s\nstart_cmd = /etc/ly/startup.sh\n' "$TTY_NUM" \
+		| run_root tee "$LY_INI" >/dev/null
 fi
+
+echo "Ly tty = ${TTY_NUM}"
+ly_upsert_ini "$LY_INI" tty "$TTY_NUM"
+ly_upsert_ini "$LY_INI" start_cmd "/etc/ly/startup.sh"
 
 if [ "$DO_COLORS" = 1 ]; then
 	if [ ! -f "$LY_COLORS_FILE" ]; then
-		echo "警告: 无颜色文件 $LY_COLORS_FILE，跳过配色" >&2
-	elif [ ! -f "$LY_INI" ]; then
-		echo "警告: 无 $LY_INI，跳过配色（先装 ly）" >&2
+		echo "警告: 无 $LY_COLORS_FILE" >&2
 	else
-		echo "Ly 配色/样式 ← $(basename "$LY_COLORS_FILE")（棕金 + 大时钟 + box_title）"
-		# 去掉注释空行，按 key=val 写入
+		echo "Ly 配色 ← $(basename "$(readlink -f "$LY_COLORS_FILE" 2>/dev/null || echo "$LY_COLORS_FILE")")"
 		while IFS= read -r _line || [ -n "$_line" ]; do
-			# 保留值两侧有意空格；只去掉整行注释
 			case "$_line" in
 			\#*|"") continue ;;
 			esac
 			_line=$(printf '%s' "$_line" | sed 's/[[:space:]]*#.*$//')
 			[ -z "$_line" ] && continue
 			_key=$(printf '%s' "$_line" | cut -d= -f1 | sed 's/[[:space:]]*$//')
-			# 只去掉「= 后的一个空格」，保留值里故意的前导空格（box_title 缩进）
 			_val=$(printf '%s' "$_line" | cut -d= -f2- | sed 's/^ //')
 			[ -n "$_key" ] || continue
 			ly_upsert_ini "$LY_INI" "$_key" "$_val"
@@ -185,32 +228,22 @@ if [ "$DO_COLORS" = 1 ]; then
 	fi
 fi
 
-# 去掉 info/session 两侧 < >（打补丁的 ly-dm → /usr/local/bin）
-if [ -f "$ROOT/patch-ly-arrows.sh" ]; then
-	chmod +x "$ROOT/patch-ly-arrows.sh"
-	sh "$ROOT/patch-ly-arrows.sh" || echo "警告: ly 去箭头补丁未应用" >&2
-fi
-
-if [ "$DO_ENABLE" = 1 ]; then
-	# 从旧默认 tty2 迁走，避免双实例
-	if [ "$TTY_NUM" != 2 ]; then
-		run_root systemctl disable --now "ly@tty2.service" 2>/dev/null || true
-	fi
-	if [ "$TTY_NUM" != 1 ]; then
-		run_root systemctl disable --now "ly@tty1.service" 2>/dev/null || true
-	fi
+if [ "$DO_ENABLE" = 1 ] && command -v systemctl >/dev/null 2>&1; then
+	for _n in 1 2 3 4 5 6; do
+		[ "$_n" = "$TTY_NUM" ] && continue
+		run_root systemctl disable "ly@tty${_n}.service" 2>/dev/null || true
+	done
 	echo "enable $LY_UNIT"
 	run_root systemctl enable "$LY_UNIT"
+	run_root systemctl restart "$LY_UNIT" 2>/dev/null || run_root systemctl start "$LY_UNIT" || true
 fi
 
-# 老式 Unix 提示文案
 if [ -f "$ROOT/lang/unix.ini" ]; then
 	run_root mkdir -p /etc/ly/lang
 	run_root install -m644 "$ROOT/lang/unix.ini" /etc/ly/lang/unix.ini
-	echo "lang ← unix.ini（login: / Password:）"
+	echo "lang ← unix.ini"
 fi
 
-# tmux → Ly custom-sessions（Terminal=true，不宜放 xsessions）
 if [ -f "$ROOT/sessions/tmux.desktop" ] && command -v tmux >/dev/null 2>&1; then
 	run_root mkdir -p "$LY_CUSTOM"
 	run_root cp -f "$ROOT/sessions/tmux.desktop" "$LY_CUSTOM/tmux.desktop"
@@ -218,6 +251,6 @@ if [ -f "$ROOT/sessions/tmux.desktop" ] && command -v tmux >/dev/null 2>&1; then
 	echo "custom-sessions ← tmux.desktop"
 fi
 
-echo "x11:ly 完成。字体 ${FONT_NAME}；单元 $LY_UNIT"
-echo "  会话 xsessions：装 desktop:suckless / kiosk / fvwm 时自动写入"
-echo "  立刻改字并亮 Ly: setfont -C /dev/tty${TTY_NUM} ${FONT_NAME}; systemctl restart ${LY_UNIT}"
+echo "vendor/ly 完成。字体 ${FONT_NAME}；二进制 $DST；单元 ${LY_UNIT:-（无 systemd）}"
+echo "  主题: ./theme.sh amber|green"
+echo "  测 Ly: setfont -C /dev/tty${TTY_NUM} ${FONT_NAME}; systemctl restart ${LY_UNIT:-ly@tty1}"

@@ -1,0 +1,123 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+const ly_ui = @import("ly-ui");
+const keyboard = ly_ui.keyboard;
+const TerminalBuffer = ly_ui.TerminalBuffer;
+const Widget = ly_ui.Widget;
+const CyclableLabel = ly_ui.CyclableLabel;
+
+const UserList = @import("UserList.zig");
+const Environment = @import("../Environment.zig");
+
+const Env = struct {
+    environment: Environment,
+    index: usize,
+};
+const EnvironmentLabel = CyclableLabel(Env, *?UserList);
+
+const Session = @This();
+
+instance: ?Widget = null,
+label: *EnvironmentLabel,
+user_list: *?UserList,
+
+pub fn init(
+    allocator: Allocator,
+    io: std.Io,
+    buffer: *TerminalBuffer,
+    user_list: *?UserList,
+    width: usize,
+    text_in_center: bool,
+    fg: u32,
+    bg: u32,
+) !Session {
+    return .{
+        .instance = null,
+        .label = try EnvironmentLabel.init(
+            allocator,
+            io,
+            buffer,
+            drawItem,
+            sessionChanged,
+            user_list,
+            width,
+            text_in_center,
+            fg,
+            bg,
+        ),
+        .user_list = user_list,
+    };
+}
+
+pub fn deinit(self: *Session) void {
+    for (self.label.list.items) |*env| {
+        if (env.environment.entry_ini) |*entry_ini| entry_ini.deinit();
+        self.label.allocator.free(env.environment.file_name);
+    }
+
+    self.label.deinit();
+}
+
+pub fn widget(self: *Session) *Widget {
+    if (self.instance) |*instance| return instance;
+    self.instance = Widget.init(
+        "Session",
+        self.label.keybinds,
+        self,
+        deinit,
+        null,
+        draw,
+        null,
+        handle,
+        null,
+    );
+    return &self.instance.?;
+}
+
+pub fn addEnvironment(self: *Session, environment: Environment) !void {
+    const env = Env{ .environment = environment, .index = self.label.list.items.len };
+
+    try self.label.addItem(env);
+    if (self.user_list.*) |w| addedSession(env, w);
+}
+
+fn draw(self: *Session) void {
+    self.label.draw();
+}
+
+fn handle(self: *Session, maybe_key: ?keyboard.Key) !void {
+    try self.label.handle(maybe_key);
+}
+
+fn addedSession(env: Env, user_list: UserList) void {
+    const user = user_list.label.list.items[user_list.label.current];
+    if (!user.first_run) return;
+
+    user.session_index.* = env.index;
+}
+
+fn sessionChanged(env: Env, maybe_user_list: ?*?UserList) void {
+    if (maybe_user_list) |user_list| {
+        if (user_list.*) |w| w.label.list.items[w.label.current].session_index.* = env.index;
+    }
+}
+
+fn drawItem(label: *EnvironmentLabel, env: Env, x: usize, y: usize, width: usize) void {
+    if (width < 3) return;
+
+    const length = @min(TerminalBuffer.strWidth(env.environment.name), width - 3);
+    if (length == 0) return;
+
+    const x_offset = if (label.text_in_center and width >= length) (width - length) / 2 else 0;
+
+    label.cursor = length + x_offset;
+    TerminalBuffer.drawConfinedText(
+        env.environment.name,
+        x + x_offset,
+        y,
+        width,
+        label.fg,
+        label.bg,
+    ) catch {};
+}

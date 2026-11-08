@@ -17,27 +17,42 @@ if [ -n "$_tty" ] && [ -c "/dev/$_tty" ]; then
 	setfont -C "/dev/$_tty" "$FONT_NAME" 2>/dev/null || setfont "$FONT_NAME" 2>/dev/null || true
 fi
 
-# 16 色：索引 3=暗黄/棕，11=亮黄 —— 都改成棕金（默认 11 是刺眼 #FFFF55）
+# 16 色调色板：主题见 /etc/ly/theme 或 LY_THEME（amber|green）
 if [ "${TERM:-}" = "linux" ] || [ -n "$_tty" ]; then
-	# 黑 / 红 / 绿 / 棕金 / 蓝 / 品红 / 青 / 浅灰
-	# 深灰 / 亮红 / 亮绿 / 亮棕金 / 亮蓝 / 亮品红 / 亮青 / 白
-	# 绿槽也改成棕金：matrix 雨滴在 16 色 TTY 上常走绿，否则仍是荧光绿
+	_theme="${LY_THEME:-}"
+	[ -z "$_theme" ] && [ -r /etc/ly/theme ] && _theme=$(cat /etc/ly/theme)
+	_theme=$(printf '%s' "${_theme:-amber}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
 	BLACK="000000"
 	DARK_RED="AA0000"
-	DARK_GREEN="8B6914"
-	DARK_YELLOW="AE8010"
 	DARK_BLUE="0000AA"
 	DARK_MAGENTA="AA00AA"
 	DARK_CYAN="00AAAA"
 	LIGHT_GRAY="AAAAAA"
 	DARK_GRAY="555555"
 	RED="FF5555"
-	GREEN="C09020"
-	YELLOW="C09020"
 	BLUE="5555FF"
 	MAGENTA="FF55FF"
 	CYAN="55FFFF"
 	WHITE="FFFFFF"
+
+	case "$_theme" in
+	green)
+		# Matrix 雨绿（测完改回 amber）
+		DARK_GREEN="008F11"
+		DARK_YELLOW="00FF41"
+		GREEN="39FF14"
+		YELLOW="00FF41"
+		;;
+	*)
+		# 棕金（默认，见 crt-amber.colors）
+		DARK_GREEN="8B6914"
+		DARK_YELLOW="AE8010"
+		GREEN="C09020"
+		YELLOW="C09020"
+		;;
+	esac
+	unset _theme
 
 	COLORS="$BLACK $DARK_RED $DARK_GREEN $DARK_YELLOW $DARK_BLUE $DARK_MAGENTA $DARK_CYAN $LIGHT_GRAY $DARK_GRAY $RED $GREEN $YELLOW $BLUE $MAGENTA $CYAN $WHITE"
 	i=0
@@ -46,7 +61,7 @@ if [ "${TERM:-}" = "linux" ] || [ -n "$_tty" ]; then
 		printf '\033]P%x%s' "$i" "$(echo $COLORS | cut -d ' ' -f$((i + 1)))"
 		i=$((i + 1))
 	done
-	# 光标：Linux 文本 VT 只有下划线/半块/全块，没有 I-beam 竖线；6=全块（最接近）
-	printf '\033[?6c'
+	# 硬件光标藏起（?1c）；Ly 用主题色画软方块光标
+	printf '\033[?1c'
 	clear
 fi

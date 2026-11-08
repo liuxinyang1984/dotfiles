@@ -27,6 +27,6 @@ text_in_center=true
 lang=unix
 hide_key_hints=true
 asterisk=*
-# 标题在框顶；两侧加空格并略偏右；info 置空（配合去箭头的 ly-dm）
-box_title=        AT&T UNIX System V        
+# 标题在框顶（ini 会 trim 空格；左右空隙/右偏由 ly-dm 补丁画）；info 置空不显示 hostname
+box_title=AT&T UNIX System V
 initial_info_text=

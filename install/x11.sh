@@ -212,15 +212,16 @@ install_x11_rofi() {
 }
 
 install_x11_ly() {
-	_sh="$SCRIPT_DIR/config/x11/ly/install.sh"
+	# 业务全在 vendor/ly（暂为仓内目录；日后可改成独立 submodule + run_vendor_install）
+	_sh="$SCRIPT_DIR/vendor/ly/install.sh"
 	[ -f "$_sh" ] || {
 		error "缺少 $_sh"
 		return 1
 	}
 	chmod +x "$_sh"
-	info "安装 x11:ly…"
+	info "安装 x11:ly ← vendor/ly…"
 	# shellcheck disable=SC2086
-	"$_sh" ${INSTALL_ARGS:-}
+	sh "$_sh" ${INSTALL_ARGS:-}
 }
 
 x11_dispatch() {

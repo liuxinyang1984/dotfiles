@@ -7,7 +7,9 @@ dwm-session
 startx dwm
 ```
 
-自启：dwmblocks、feh、fcitx5、dunst、clipmenud、picom（可 `SKIP_PICOM=1`）。
+自启：dwmblocks、feh、fcitx5、dunst、clipmenud、picom（可 `SKIP_PICOM=1`）、`xss-lock`→`slock`。
+
+空闲（`xset`，可 `IDLE_LOCK_SEC` / `IDLE_DPMS_SEC` 覆盖）：**5 分钟锁屏**，**15 分钟灭屏**。依赖：`pacman -S xss-lock`（锁屏器仍是 suckless `slock`）。
 
 快捷键（`config.def.rofi.h` → `config.h`，需 `./install.sh x11:rofi`）：
 **Super+Space** → `rofi-drun`（.desktop），**Super+r** → `rofi-run`（PATH 命令）。

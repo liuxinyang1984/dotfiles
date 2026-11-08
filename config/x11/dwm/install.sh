@@ -63,9 +63,10 @@ fi
 unset _shot
 
 # Ly / 其它 DM：注册 xsessions（需 sudo；LY_SKIP_XSESSION=1 跳过）
-_ly_xsess="$(cd "$ROOT/.." && pwd)/ly/install-xsession.sh"
+_repo="$(cd "$ROOT/../../.." && pwd)"
+_ly_xsess="$_repo/vendor/ly/install-xsession.sh"
 if [ -f "$ROOT/dwm.desktop" ] && [ -f "$_ly_xsess" ]; then
 	chmod +x "$_ly_xsess"
 	sh "$_ly_xsess" "$ROOT/dwm.desktop" || echo "警告: xsessions 未写入（无 root 或已跳过）" >&2
 fi
-unset _ly_xsess
+unset _ly_xsess _repo
