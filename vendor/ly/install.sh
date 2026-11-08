@@ -101,10 +101,16 @@ build_ly() {
 	run_root install -m755 "$BIN" "$DST"
 	if command -v systemctl >/dev/null 2>&1; then
 		run_root mkdir -p /etc/systemd/system/ly@.service.d
+		# Restart=always：会话正常注销后 ly 主动退出，由 unit 干净拉起（TTYReset）
 		run_root tee /etc/systemd/system/ly@.service.d/override.conf >/dev/null <<'UNIT'
 [Service]
 ExecStart=
 ExecStart=/usr/local/bin/ly-dm
+Restart=always
+RestartSec=1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
 UNIT
 		run_root systemctl daemon-reload
 	fi

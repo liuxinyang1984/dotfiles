@@ -1640,18 +1640,37 @@ fn authenticate(ptr: *anyopaque) !bool {
         if (session_pid != -1) {
             var session_status: c_int = undefined;
             _ = std.posix.system.waitpid(session_pid, &session_status, 0);
-            // HACK: It seems like the session process is not exiting immediately after the waitpid call.
-            // This is a workaround to ensure the session process has exited before re-initializing the TTY.
-            state.io.sleep(.fromSeconds(1), .real) catch {};
+            // X/fbcon 卸 modeset 需要一点时间；过短则 reclaim/重启仍可能花屏
+            state.io.sleep(.fromSeconds(2), .real) catch {};
             session_pid = -1;
         }
 
         try state.log_file.reinit(state.io);
     }
 
+    const auth_err = shared_err.readError();
+
+    // 会话正常结束（含从 dwm 注销）：不要 soft reclaim——i915/fbcon 上常导致滚屏花屏。
+    // 结束进程，由 systemd Restart=always + TTYReset 干净拉起（等同手动 restart ly@ttyN）。
+    if (auth_err == null) {
+        if (state.config.logout_cmd) |logout_cmd| execute_cmd: {
+            var process = std.process.spawn(state.io, .{
+                .argv = &[_][]const u8{ "/bin/sh", "-c", logout_cmd },
+            }) catch break :execute_cmd;
+            _ = process.wait(state.io) catch {};
+        }
+
+        state.password.clear();
+        state.is_autologin = false;
+        try state.log_file.info(state.io, "auth", "logged out", .{});
+        try state.log_file.info(state.io, "tui", "exiting after logout for clean TTY restart", .{});
+        state.buffer.stopEventLoop();
+        return false;
+    }
+
+    // 认证失败：仍在同一进程里收回 TTY 并重画
     try state.buffer.reclaim();
 
-    const auth_err = shared_err.readError();
     if (auth_err) |err| handle_error: {
         if (err == error.PamNewAuthTokenRequired) {
             try state.info_line.addMessage(
@@ -1682,22 +1701,6 @@ fn authenticate(ptr: *anyopaque) !bool {
         );
 
         if (state.config.clear_password or err != error.PamAuthError) state.password.clear();
-    } else {
-        if (state.config.logout_cmd) |logout_cmd| execute_cmd: {
-            var process = std.process.spawn(state.io, .{
-                .argv = &[_][]const u8{ "/bin/sh", "-c", logout_cmd },
-            }) catch break :execute_cmd;
-            _ = process.wait(state.io) catch {};
-        }
-
-        state.password.clear();
-        state.is_autologin = false;
-        try state.info_line.addMessage(
-            state.lang.logout,
-            state.config.bg,
-            state.config.fg,
-        );
-        try state.log_file.info(state.io, "auth", "logged out", .{});
     }
 
     if (state.config.auth_fails == 0 or state.auth_fails < state.config.auth_fails) {

@@ -450,11 +450,23 @@ pub fn setCellBoundsChecked(self: *TerminalBuffer, x: isize, y: isize, cell: Cel
     }
 }
 
-pub fn reclaim(self: TerminalBuffer) !void {
+pub fn reclaim(self: *TerminalBuffer) !void {
     if (self.termios) |termios| {
-        // Take back control of the TTY
+        // 先关掉再开：仅 tb_init(ALREADY) 在退 X 后不够（尤其 i915 fbcon）
+        _ = termbox.tb_shutdown();
+
+        // 强制文本模式，避免仍停在 KD_GRAPHICS
+        if (termbox.global.ttyfd >= 0) {
+            const KDSETMODE: c_ulong = 0x4B3A;
+            const KD_TEXT: c_int = 0;
+            _ = std.posix.system.ioctl(termbox.global.ttyfd, KDSETMODE, @as(usize, @intCast(KD_TEXT)));
+        }
+
         const err = termbox.tb_init();
         if (err != 0 and err != termbox.TB_ERR_INIT_ALREADY) return error.TermboxReinitFailed;
+
+        self.width = getWidth();
+        self.height = getHeight();
 
         _ = termbox.tb_hide_cursor();
         hideHardwareCursor();
@@ -464,6 +476,7 @@ pub fn reclaim(self: TerminalBuffer) !void {
         }
 
         try std.posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, termios);
+        try clearScreen(true);
     }
 }
 
