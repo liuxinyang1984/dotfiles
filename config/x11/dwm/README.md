@@ -7,7 +7,7 @@ dwm-session
 startx dwm
 ```
 
-自启：dwmblocks、feh、fcitx5、dunst、clipmenud、picom（可 `SKIP_PICOM=1`）、`xss-lock`→`slock`。退出 dwm 时先清助手再结束会话，减轻 `cannot open display` 刷屏。
+自启：dwmblocks、feh、fcitx5、dunst、clipmenud（`CM_SELECTIONS=clipboard`、`CM_MAX_CLIPS=100`；不监视反白 PRIMARY）、picom（可 `SKIP_PICOM=1`）、`xss-lock`→`slock`。Super+v → `rofi-clip`（载入最多 100 条可滚动，窗口默认 8 行；`CM_HISTLENGTH` / `CM_ROFI_LINES`）。退出 dwm 时先清助手再结束会话，减轻 `cannot open display` 刷屏。
 
 空闲（`xset`，可 `IDLE_LOCK_SEC` / `IDLE_DPMS_SEC` 覆盖）：**5 分钟锁屏**，**15 分钟灭屏**。锁屏器与 `xss-lock`：
 

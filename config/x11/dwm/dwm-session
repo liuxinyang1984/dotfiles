@@ -55,7 +55,11 @@ quiet() { \"\$@\" >/dev/null 2>&1 & PIDS=\"\$PIDS \$!\"; }
 fcitx5 -d >/dev/null 2>&1 || true
 command -v dwmblocks >/dev/null 2>&1 && quiet dwmblocks
 command -v dunst >/dev/null 2>&1 && quiet dunst
-command -v clipmenud >/dev/null 2>&1 && quiet clipmenud
+# 只监视 CLIPBOARD（Ctrl+Shift+C）；反白 PRIMARY 不进历史（对齐 alacritty/foot）
+# CM_MAX_CLIPS：软上限，超 CM_MAX_CLIPS+10 裁回（默认 1000 太大）
+if command -v clipmenud >/dev/null 2>&1; then
+  CM_SELECTIONS=clipboard CM_MAX_CLIPS=100 quiet clipmenud
+fi
 command -v xss-lock >/dev/null 2>&1 && quiet xss-lock -l -- slock
 if command -v mini-polkit-agent >/dev/null 2>&1; then
   quiet mini-polkit-agent
@@ -77,6 +81,7 @@ done
 pkill -x dwmblocks 2>/dev/null || true
 pkill -x dunst 2>/dev/null || true
 pkill -x clipmenud 2>/dev/null || true
+pkill -f '/usr/sbin/clipmenud' 2>/dev/null || true
 pkill -x xss-lock 2>/dev/null || true
 pkill -x mini-polkit 2>/dev/null || true
 pkill -x mini-polkit-agent 2>/dev/null || true
