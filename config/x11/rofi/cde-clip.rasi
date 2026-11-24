@@ -1,9 +1,26 @@
-/* 剪切板：无图标列；其它与 cde-dwm / cde 一致 */
+/* 剪切板：无图标列；固定宽度，长行由 rofi-clip 按列截断
+ * 只设 lines（默认 8 / CM_ROFI_LINES），不锁 window height——高度跟字体走。 */
 @import "cde-dwm.rasi"
+
+window {
+    width: 640px;
+}
+
+listview {
+    /* 覆盖 cde.rasi 的 lines: 6 */
+    lines:        8;
+    fixed-height: true;
+    scrollbar:    true;
+}
 
 element {
     children: [ element-text ];
     spacing:  0;
+}
+
+element-text {
+    horizontal-align: 0;
+    markup:           false;
 }
 
 element-icon {
