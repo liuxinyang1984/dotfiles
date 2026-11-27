@@ -163,9 +163,25 @@ clear_other_defaults() {
 	done
 }
 
+# sunsong 的 10-*-render 会改写 monospace → ttyp0/Song；Maple 作默认时须卸掉
+disable_sunsong_render() {
+	_ss="$FC_CONFD/10-sunsong-render.conf"
+	[ -e "$_ss" ] || [ -L "$_ss" ] || return 0
+	if [ -L "$_ss" ]; then
+		_t="$(readlink "$_ss")"
+		case "$_t" in
+		*/config/fonts/sunsong/conf/10-sunsong-render.conf|"$DOTFILES_ROOT"/config/fonts/sunsong/conf/10-sunsong-render.conf)
+			rm -f "$_ss"
+			info "已停用 Sol7 render（否则会盖住 Maple monospace）: $_ss"
+			;;
+		esac
+	fi
+}
+
 install_default() {
 	ensure_framework
 	clear_other_defaults
+	disable_sunsong_render
 	link_conf "$DEFAULT_SRC" "$DEFAULT_DEST" "99-default-maple"
 }
 

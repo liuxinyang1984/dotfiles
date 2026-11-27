@@ -140,6 +140,7 @@ install_font() {
 
 install_render() {
 	ensure_framework
+	# maple --default 会卸掉本链接；切回 Sol7 时重新挂上
 	link_conf "$RENDER_SRC" "$RENDER_DEST" "10-sunsong-render"
 }
 
