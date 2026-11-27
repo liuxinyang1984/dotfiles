@@ -83,3 +83,19 @@ size 恰好 12/14/16/20/24 当作逻辑字号；dpi 旁路 size（如 15.36）�
 勿 weak 挂第二份 pixelsize（会与 qual=any 吸附串档）。
 
 处理管线: PCF→OTB；songR 族名 SunSong Roman；关 AA、pixelsizefixupfactor=1。
+
+monospace 与矢量回退:
+  99-default-sunsong / 10 末尾对 monospace 钉 scalable=false；Maple 不进 monospace。
+  点阵无覆盖的码点（多数 Nerd）不回退 TTF，终端 .notdef/方块。
+  少数 powerline（U+E0B0 等）可能命中系统 Terminus 点阵，仍非 TTF。
+  st 缺字查找勿再 FcPatternAddBool(FC_SCALABLE,1)。
+
+外来点阵:
+  系统 75-yes-terminus 会在用户 conf 之后再次 accept Terminus，须在
+  /etc/fonts/conf.d/99-sol7-bitmap-whitelist.conf 用 glob 剔除 Terminus/
+  Unibit/misc/100dpi 等；否则 – — • € 等会显示成「别的英文字体」。
+
+英文半角（终端）:
+  物理 14/16/18/22 → UW ttyp0（族名「Ttyp0 OTB」）7×14 / 8×16 / 9×18 / 11×22 + Bold
+  物理 26 → 仍 SunSong Roman（无对应 ttyp0）
+  OTB 在 ~/.local/share/fonts/ttyp0/（仓内 config/fonts/ttyp0/files 备份）

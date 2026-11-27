@@ -20,8 +20,11 @@ FC_DIR="$XDG_CONFIG_HOME/fontconfig"
 FC_CONFD="$FC_DIR/conf.d"
 RENDER_SRC="$ROOT/conf/10-sunsong-render.conf"
 DEFAULT_SRC="$ROOT/conf/99-default-sunsong.conf"
+WHITELIST_SRC="$ROOT/conf/99-sol7-bitmap-whitelist.conf"
 RENDER_DEST="$FC_CONFD/10-sunsong-render.conf"
 DEFAULT_DEST="$FC_CONFD/99-default-sunsong.conf"
+# 须晚于 /etc/fonts/conf.d/75-yes-terminus，只能放系统 conf.d
+WHITELIST_DEST="/etc/fonts/conf.d/99-sol7-bitmap-whitelist.conf"
 FRAMEWORK_SRC="$DOTFILES_ROOT/config/fonts/fonts.conf"
 FRAMEWORK_DEST="$FC_DIR/fonts.conf"
 
@@ -159,10 +162,25 @@ clear_other_defaults() {
 	done
 }
 
+install_whitelist() {
+	[ -f "$WHITELIST_SRC" ] || { error "缺少 $WHITELIST_SRC"; exit 1; }
+	if [ -w /etc/fonts/conf.d ] || [ "$(id -u)" = 0 ]; then
+		ln -sfn "$WHITELIST_SRC" "$WHITELIST_DEST"
+		info "99-sol7-bitmap-whitelist → $WHITELIST_DEST"
+	elif command -v sudo >/dev/null 2>&1; then
+		sudo ln -sfn "$WHITELIST_SRC" "$WHITELIST_DEST"
+		info "99-sol7-bitmap-whitelist → $WHITELIST_DEST (sudo)"
+	else
+		warn "无法写入 $WHITELIST_DEST；Terminus 等会继续抢走英文符号"
+		warn "请手动: sudo ln -sfn $WHITELIST_SRC $WHITELIST_DEST"
+	fi
+}
+
 install_default() {
 	ensure_framework
 	clear_other_defaults
 	link_conf "$DEFAULT_SRC" "$DEFAULT_DEST" "99-default-sunsong"
+	install_whitelist
 }
 
 # --- 参数 ---
