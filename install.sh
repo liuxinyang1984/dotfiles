@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 is_known_module() {
     case "$1" in
         shell|zsh|tmux|nvim|vim|fontconfig|fcitx5-chinese|keyd|dunst) return 0 ;;
+        fonts:maple|fonts:sunsong) return 0 ;;
         desktop:suckless|desktop:hyprland|desktop:kiosk|desktop:fvwm|desktop:picom) return 0 ;;
         x11:multistart|x11:picom|x11:rofi|x11:ly) return 0 ;;
         *) return 1 ;;
@@ -28,7 +29,9 @@ usage() {
   tmux                  调用 vendor/tmux/install.sh（配置 → ~/.config/tmux）
   nvim                  调用 vendor/neovim/install.sh
   vim                   调用 vendor/vim_server/install.sh
-  fontconfig            链接 fonts.conf；缺 Maple Mono NL NF（Hinted）则下载安装
+  fontconfig            兼容入口 → 框架 + fonts:maple --all（框架在 config/fonts/）
+  fonts:maple           Maple Mono NL NF（可跟 --all / --font / --render / --default）
+  fonts:sunsong         Solaris 7 点阵宋+Lucida（可跟 --all / …）
   fcitx5-chinese        Alpine x86 装本仓预编译 apk；否则有包则跳过，再否则编译拼音插件
   keyd                  安装 config/keyd/default.conf → /etc/keyd/，启用 keyd 服务
   dunst                 链接 dunst + mako 通知配置（dwm / Hyprland）
@@ -43,6 +46,8 @@ usage() {
 
 示例:
   $0 shell zsh tmux nvim
+  $0 fonts:maple --all
+  $0 fonts:sunsong --all
   $0 desktop:suckless
   $0 desktop:suckless dwm
   $0 desktop:suckless dwm st
@@ -81,6 +86,12 @@ run_one_module() {
         x11)
             if [ -z "$sub" ]; then
                 error "请指定 x11:multistart、x11:picom、x11:rofi 或 x11:ly"
+                exit 1
+            fi
+            ;;
+        fonts)
+            if [ -z "$sub" ]; then
+                error "请指定 fonts:maple 或 fonts:sunsong"
                 exit 1
             fi
             ;;

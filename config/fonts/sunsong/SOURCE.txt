@@ -1,0 +1,85 @@
+SunSong — Solaris 7 Desktop (SPARC 11/99 简中) 点阵配对
+
+来源（个人从 Solaris7CH.img 抽取，勿再分发授权不明的字体文件）:
+  /usr/openwin/lib/locale/zh/X11/fonts/75dpi/
+    lutRA14.pcf.Z          → LucidaTypewriter Asian（终端英文，仅 14px）
+    song{12,14,16,20,24}.pcf.Z / songB{14,16}.pcf.Z → 汉字（B=粗宋，仅两档）
+    songR{12,14,16,20,24}.pcf.Z → song-roman 半角拉丁（族名 SunSong Roman）
+  /usr/openwin/lib/X11/fonts/F3bitmaps/
+    LucidaSans*.pcf.Z / LucidaSans-Typewriter*.pcf.Z → 界面 / 等宽（含 Bold）
+
+蓝本: OW_FONT_SETS/OpenWindows.fs（zh）
+  XView 逻辑字号: small=12 medium=14 large=16 extra_large=24
+  逻辑 → 物理 ppem: 12→14 | 14→16 | 16→18 | 20→22 | 24→26
+
+未收录进 Desktop Font Set: 中易 TTF、Monotype Hei TTF、圆体、LucidaBright。
+  Hei 仅出现在打印 PS（Hei-Medium*.ps）与 zh.GBK/TrueType；
+  OpenWindows.fs / XView 的中文侧始终是 Song（宋），无黑体/圆体点阵 sans。
+
+────────────────────────────────────────
+1) 原系统全部组合（OpenWindows.fs）
+
+记号: EN@px + ZH@px；通配 = XLFD 0-0-0-0（fc 就近 strike）
+
+FIXEDWIDTH / monospace NORMAL:
+  12 → Roman@14 + Song@14
+  14 → LucidaTypewriter Asian@14 + Song@16     ★ 英14/中16
+  16 → Roman@18 + Song@18
+  20 → Roman@22 + Song@22
+  24 → Roman@26 + Song@26
+
+FIXEDWIDTH BOLD（songB 仅 16/18；其余回落 medium）:
+  12 → 同 NORMAL 12（无粗宋）
+  14 → Lucida Sans Typewriter Bold（通配） + Song Bold@16
+       （F3 alias: lucidatypewriter-bold → lucida sans typewriter-bold）
+  16 → Typewriter Bold@14 + Song Bold@18      （原文显式英14/中18）
+  20/24 → 同 NORMAL（无粗宋）
+
+SANS_SERIF NORMAL（default_family）:
+  12 → Lucida Sans（通配偏 14） + Song@14     (p-chinese-0)
+  14 → Lucida Sans（通配） + Song@16           (p)
+  16/20/24 → Roman + Song 同档                 (c-chinese-0)
+
+SANS_SERIF BOLD:
+  12 → 同 NORMAL 12
+  14 → Lucida Sans Bold（通配） + Song Bold@16
+  16 → Lucida Sans Bold@14 + Song Bold@18
+  20/24 → 同 NORMAL
+
+SERIF: 与 SANS 同表（含 italic-14 = Lucida Italic 通配 + Song@16）
+
+短名: song12/14/16/20/24 → FIXEDWIDTH NORMAL；songb14 → FIXEDWIDTH BOLD 14
+
+────────────────────────────────────────
+2) 中文 sans 有无黑体/圆体？
+
+无。Desktop 路径中文只有 Song / Song Bold 点阵。
+  - 所谓 SANS_SERIF 的「无衬线感」来自英文 Lucida Sans，中文仍是宋
+  - Hei（mhgbb.ttf / Hei-Medium.ps）不进 OpenWindows.fs，本模块不引入
+
+────────────────────────────────────────
+3) 粗体如何实现？
+
+  - 中文: songB14.otb (16px) / songB16.otb (18px)；其它逻辑档 alias 回落 medium
+  - 英文: Lucida Sans Bold / Lucida Sans Typewriter Bold（F3bitmaps）
+  - 无独立「粗 LucidaTypewriter Asian」；bold 终端走 Typewriter Bold
+
+────────────────────────────────────────
+fontconfig 实现（10-sunsong-render.conf）
+
+离散吸附（档内固定，13≡14≡15）:
+  请求 ≤12 → 标记 14 | 13–15 → 16 | 16–19 → 18 | 20–23 → 22 | ≥24 → 26
+  先 pixelsize，再 size(pt) 覆盖；snap 用 qual=first，避免 SunSong 被
+  系统 49-sansserif 附带后误吸。
+
+weight：先 append regular，再 qual=all less bold 走 NORMAL；weight=bold 走 Bold 族。
+标记 14/22/26 强行 medium（无 songB，对齐 XView bold-12/20/24）。
+FIXEDWIDTH medium NORMAL: lutRA 钉 14 + Song@16。
+Bold medium mono: Typewriter Bold 通配就近 17 + songB@16。
+Bold large mono: Typewriter Bold@18 + songB@18（原文英14/中18；fc 单 pixelsize 无法双尺寸）。
+Bold sans medium: 无 LucidaSans-Bold17，英可能落到 Regular@17；中文 songB@16 正确。
+
+size 恰好 12/14/16/20/24 当作逻辑字号；dpi 旁路 size（如 15.36）不参与选档。
+勿 weak 挂第二份 pixelsize（会与 qual=any 吸附串档）。
+
+处理管线: PCF→OTB；songR 族名 SunSong Roman；关 AA、pixelsizefixupfactor=1。

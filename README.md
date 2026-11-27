@@ -57,7 +57,9 @@ git submodule update --init --recursive
 | `tmux` | 调用 `vendor/tmux/install.sh` → `~/.config/tmux` + TPM 插件 |
 | `nvim` | 调用 `vendor/neovim/install.sh` → symlink `~/.config/nvim` |
 | `vim` | 调用 `vendor/vim_server/install.sh`（默认用户；`--system` → `/opt/vim-config`） |
-| `fontconfig` | 链接 `fonts.conf`；缺 Maple Mono NL NF（Hinted）则下载 |
+| `fontconfig` | 兼容入口：框架 + `fonts:maple --all`（框架在 `config/fonts/fonts.conf`） |
+| `fonts:maple` | Maple Mono NL NF（`--all` / `--font` / `--render` / `--default`） |
+| `fonts:sunsong` | Solaris 7 点阵宋 + Lucida（同上；仓内 PCF） |
 | `fcitx5-chinese` | Alpine x86 优先装本仓预编译 apk；否则有仓库包则跳过，再否则源码编译 |
 | `keyd` | 安装 `config/keyd/default.conf` → `/etc/keyd/`，`systemctl enable --now keyd` |
 | `dunst` | 链接 `config/dunst/dunstrc` + `config/mako/config`（dwm / Hyprland 通知） |
